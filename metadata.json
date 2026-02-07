@@ -1,0 +1,8 @@
+{
+  "name": "CodeMaster - AI Learning Platform",
+  "description": "A comprehensive coding education platform for students featuring AI-driven learning paths, integrated compilers, and an administrative panel for curriculum management.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
