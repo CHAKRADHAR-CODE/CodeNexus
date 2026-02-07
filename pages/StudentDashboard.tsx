@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, UserRole, Topic, DailyChallengeSet, UserProgress, DailyProblem, RankTier } from '../types';
 import Layout, { getLevelData } from '../components/Layout';
 import { getTopicIcon } from '../constants';
@@ -14,15 +14,8 @@ import {
   Target,
   Circle,
   RefreshCw,
-  TrendingUp,
-  CloudUpload,
-  Loader2,
-  Check,
-  BrainCircuit,
-  Zap
+  TrendingUp
 } from 'lucide-react';
-import { saveUser } from '../services/api';
-import { getAICoachAdvice } from '../services/geminiService';
 
 interface StudentDashboardProps {
   user: User;
@@ -40,31 +33,24 @@ interface StudentDashboardProps {
   currentDateStr: string;
 }
 
+const getTierInfo = (points: number = 0) => {
+  if (points >= 5000) return { name: RankTier.ELITE, color: 'text-indigo-600 dark:text-indigo-400' };
+  if (points >= 3500) return { name: RankTier.DIAMOND, color: 'text-cyan-600 dark:text-cyan-400' };
+  if (points >= 2500) return { name: RankTier.PLATINUM, color: 'text-zinc-600 dark:text-zinc-400' };
+  if (points >= 1500) return { name: RankTier.GOLD, color: 'text-orange-600 dark:text-orange-400' };
+  return { name: RankTier.BRONZE, color: 'text-zinc-500' };
+};
+
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ 
   user, users, topics, challenges, progress, onLogout, isDark, setDark, onMarkAsSolved, onMarkAsAttempted, isSyncing, isFastSyncing, currentDateStr
 }) => {
   const [search, setSearch] = useState('');
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const [backupStatus, setBackupStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [aiAdvice, setAiAdvice] = useState<string>('Loading AI insights...');
-  const [isLoadingAI, setIsLoadingAI] = useState(false);
-  
   const todaysChallenge = challenges.find(c => c.date === currentDateStr);
   const levelData = useMemo(() => getLevelData(progress.points), [progress.points]);
 
   const isDayCompleted = useMemo(() => {
     return progress.lastChallengeDate === currentDateStr;
   }, [progress.lastChallengeDate, currentDateStr]);
-
-  useEffect(() => {
-    const fetchAdvice = async () => {
-      setIsLoadingAI(true);
-      const advice = await getAICoachAdvice(progress.points, progress.currentStreak, progress.completedTopicIds);
-      setAiAdvice(advice);
-      setIsLoadingAI(false);
-    };
-    fetchAdvice();
-  }, [progress.points, progress.currentStreak]);
 
   const streakDots = useMemo(() => {
     const dots = [];
@@ -82,8 +68,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return dots;
   }, [currentDateStr, progress.completedDates]);
 
+  // Filter topics based on search AND visibility
   const filteredTopics = topics.filter(t => 
-    t.title.toLowerCase().includes(search.toLowerCase())
+    t.isVisible && t.title.toLowerCase().includes(search.toLowerCase())
   );
 
   const topPerformers = users
@@ -96,32 +83,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     .sort((a, b) => (b.points || 0) - (a.points || 0))
     .findIndex(u => u.id === user.id) + 1;
 
-  const handleCloudBackup = async () => {
-    setIsBackingUp(true);
-    setBackupStatus('idle');
-    try {
-      await saveUser({
-        name: user.name,
-        email: user.email,
-        points: progress.points,
-        streak: progress.currentStreak,
-        lastSynced: new Date().toISOString()
-      });
-      setBackupStatus('success');
-      setTimeout(() => setBackupStatus('idle'), 3000);
-    } catch (err) {
-      setBackupStatus('error');
-      setTimeout(() => setBackupStatus('idle'), 3000);
-    } finally {
-      setIsBackingUp(false);
-    }
-  };
+  const tier = getTierInfo(progress.points);
 
   return (
     <Layout user={user} onLogout={onLogout} isDark={isDark} setDark={setDark} points={progress.points}>
       <div className="space-y-8 animate-fade max-w-7xl mx-auto px-2">
         
-        {/* Banner */}
+        {/* Simplified Clean Banner */}
         <section className="bg-white dark:bg-zinc-900 border border-border p-6 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -152,24 +120,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
               </div>
             </div>
           </div>
-        </section>
-
-        {/* AI COACH SECTION */}
-        <section className="bg-gradient-to-r from-zinc-900 to-black dark:from-zinc-100 dark:to-white p-6 rounded-lg text-white dark:text-black relative overflow-hidden shadow-xl">
-           <div className="absolute right-0 top-0 opacity-10 p-4">
-             <BrainCircuit size={120} strokeWidth={1} />
-           </div>
-           <div className="relative z-10 space-y-4">
-             <div className="flex items-center gap-2">
-               <div className="px-2 py-0.5 bg-white/20 dark:bg-black/10 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
-                 <Sparkles size={10} /> AI Technical Coach
-               </div>
-               {isLoadingAI && <Loader2 size={12} className="animate-spin opacity-50" />}
-             </div>
-             <p className="text-lg md:text-xl font-medium max-w-2xl leading-relaxed italic">
-               "{aiAdvice}"
-             </p>
-           </div>
         </section>
 
         <div className="flex flex-col lg:flex-row gap-8">
@@ -207,42 +157,21 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{topic.modules.length} Units</span>
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{topic.modules.filter(m => m.isVisible).length} Units</span>
                     <ArrowRight size={14} className="text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
                   </div>
                 </Link>
               ))}
+              {filteredTopics.length === 0 && (
+                 <div className="col-span-full py-20 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-zinc-400">
+                    <Target size={32} className="opacity-20 mb-3" />
+                    <p className="text-[13px] font-bold uppercase tracking-widest opacity-40">No tracks available yet</p>
+                 </div>
+              )}
             </div>
           </div>
 
           <div className="w-full lg:w-[300px] shrink-0 space-y-6">
-            <div className="bg-white dark:bg-zinc-900 border border-border p-5 rounded-lg shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <CloudUpload className="text-zinc-400" size={14} />
-                <h3 className="text-[13px] font-bold tracking-tight">Cloud Persistence</h3>
-              </div>
-              <p className="text-[11px] text-zinc-500 mb-4 font-medium">Backup your profile data to the MongoDB Atlas cluster for multi-device sync.</p>
-              <button 
-                onClick={handleCloudBackup}
-                disabled={isBackingUp}
-                className={`w-full py-2.5 rounded-md text-[11px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 border ${
-                  backupStatus === 'success' 
-                  ? 'bg-emerald-50 text-emerald-600 border-emerald-200' 
-                  : backupStatus === 'error'
-                  ? 'bg-red-50 text-red-600 border-red-200'
-                  : 'bg-zinc-900 dark:bg-white text-white dark:text-black border-transparent hover:opacity-90 active:scale-[0.98]'
-                }`}
-              >
-                {isBackingUp ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : backupStatus === 'success' ? (
-                  <Check size={14} />
-                ) : (
-                  'Sync to Cloud'
-                )}
-              </button>
-            </div>
-
             <div className="bg-white dark:bg-zinc-900 border border-border p-5 rounded-lg shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="text-zinc-400" size={14} />
@@ -316,7 +245,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
               </div>
               
               <Link to="/ranking" className="mt-5 block text-center py-2 border border-border text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
-                View All Standings
+                View All
               </Link>
             </div>
           </div>

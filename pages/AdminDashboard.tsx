@@ -1,43 +1,32 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Topic, DailyChallengeSet, Module, DailyProblem, PlatformType, UserRole } from '../types';
 import Layout from '../components/Layout';
+import { SupabaseService } from '../services/supabase';
 import { 
   Plus, 
   Trash2, 
-  Save, 
   Settings2,
-  ExternalLink,
   Users,
-  Play,
-  FileText,
-  Code,
-  Download,
-  Ban,
-  CheckCircle,
-  ChevronRight,
-  Database,
-  Calendar as CalendarIcon,
   Layers,
   Search,
-  ArrowUp,
-  ArrowDown,
-  GripVertical,
-  Edit3,
-  X,
-  PlusCircle,
-  Eye,
-  FileSpreadsheet,
   Check,
   ChevronLeft,
-  ChevronRight as ChevronRightIcon,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Clock,
   AlertTriangle,
   Loader2,
-  DatabaseZap
+  CalendarDays,
+  ExternalLink,
+  Zap,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  // Fix: Added missing X icon import from lucide-react
+  X
 } from 'lucide-react';
-import { saveUser } from "../services/api";
-import { socket } from "../services/socket";
 
 interface AdminDashboardProps {
   user: User;
@@ -54,6 +43,50 @@ interface AdminDashboardProps {
 
 type AdminTab = 'PATHS' | 'DAILY' | 'USERS';
 
+const VisibilityToggle: React.FC<{ 
+  isVisible: boolean; 
+  onChange: (val: boolean) => void;
+}> = ({ isVisible, onChange }) => (
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => onChange(!isVisible)}
+      className={`relative inline-flex h-4 w-8 items-center rounded-full transition-all focus:outline-none ${
+        isVisible ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-800'
+      }`}
+    >
+      <span
+        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-all ${
+          isVisible ? 'translate-x-4' : 'translate-x-1'
+        }`}
+      />
+    </button>
+  </div>
+);
+
+const ReorderControls: React.FC<{
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}> = ({ onMoveUp, onMoveDown, isFirst, isLast }) => (
+  <div className="flex items-center gap-0.5 border border-border/50 rounded-md bg-white/50 dark:bg-black/20 p-0.5">
+    <button
+      onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+      disabled={isFirst}
+      className={`p-1 rounded transition-colors ${isFirst ? 'text-zinc-200 dark:text-zinc-800 cursor-not-allowed' : 'text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+    >
+      <ChevronUp size={14} />
+    </button>
+    <button
+      onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+      disabled={isLast}
+      className={`p-1 rounded transition-colors ${isLast ? 'text-zinc-200 dark:text-zinc-800 cursor-not-allowed' : 'text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+    >
+      <ChevronDown size={14} />
+    </button>
+  </div>
+);
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   user, users, setUsers, topics, setTopics, challenges, setChallenges, onLogout, isDark, setDark 
 }) => {
@@ -61,48 +94,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(topics[0]?.id || null);
   const [searchUser, setSearchUser] = useState('');
   const [feedback, setFeedback] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
-  const [isSavingToMongo, setIsSavingToMongo] = useState(false);
 
   // Calendar State
+  const todayStr = new Date().toISOString().split('T')[0];
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
-  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
-  // Deletion State
   const [pathToDelete, setPathToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // --- AUTO SAVE SYSTEM ---
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      saveUser({
-        name: user.name,
-        email: user.email,
-        updatedAt: Date.now(),
-        // Potentially syncing current state
-        topics,
-        challenges,
-        usersCount: users.length
-      });
-    }, 2000);
-    return () => clearTimeout(timeout);
-  }, [topics, challenges, users, user]);
-
-  // --- REAL TIME LISTENER (REFINED: NO PAGE RELOAD) ---
-  useEffect(() => {
-    socket.on("dataUpdated", (payload) => {
-      console.log("Live update received", payload);
-      
-      // Trigger UI re-render without reload by creating fresh references
-      setTopics(prev => [...prev]);
-      setChallenges(prev => [...prev]);
-      setUsers(prev => [...prev]);
-    });
-    
-    return () => {
-      socket.off("dataUpdated");
-    };
-  }, [setTopics, setChallenges, setUsers]);
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     setFeedback({ msg, type });
@@ -111,575 +111,359 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const selectedTopic = useMemo(() => topics.find(t => t.id === selectedTopicId), [topics, selectedTopicId]);
 
-  const handleSave = async () => {
-    setIsSavingToMongo(true);
-    try {
-      await saveUser({
-        name: "AI Studio User",
-        email: "demo@test.com"
-      });
-      notify('Demo data saved to MongoDB Atlas');
-    } catch (err) {
-      notify('Error saving to MongoDB', 'error');
-    } finally {
-      setIsSavingToMongo(false);
-    }
+  const moveArrayItem = <T,>(list: T[], index: number, direction: 'up' | 'down'): T[] => {
+    const newList = [...list];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newList.length) return newList;
+    [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
+    return newList;
   };
 
-  // --- CALENDAR LOGIC ---
-  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-  const changeMonth = (dir: 'prev' | 'next') => {
-    if (dir === 'prev') {
-      if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
-      else setCurrentMonth(currentMonth - 1);
-    } else {
-      if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
-      else setCurrentMonth(currentMonth + 1);
-    }
+  // --- PERSISTENCE HELPERS ---
+  const handleUpdateTopic = (updated: Topic) => {
+    setTopics(topics.map(t => t.id === updated.id ? updated : t));
+    SupabaseService.saveTopic(updated);
   };
 
-  const getChallengeForDate = (dateStr: string) => challenges.find(c => c.date === dateStr);
-
-  const handleDayClick = (day: number) => {
-    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    setEditingDate(dateStr);
-  };
-
-  const saveChallenge = (dateStr: string, problems: DailyProblem[]) => {
-    const existingIdx = challenges.findIndex(c => c.date === dateStr);
+  const handleUpdateChallenge = (date: string, problems: DailyProblem[]) => {
+    const existingIdx = challenges.findIndex(c => c.date === date);
     let newChallenges = [...challenges];
+    let target: DailyChallengeSet;
     if (existingIdx > -1) {
-      newChallenges[existingIdx] = { ...newChallenges[existingIdx], problems };
+      target = { ...newChallenges[existingIdx], problems };
+      newChallenges[existingIdx] = target;
     } else {
-      newChallenges.push({ id: `ch-${Date.now()}`, date: dateStr, problems });
+      target = { id: `ch-${Date.now()}`, date, problems };
+      newChallenges.push(target);
     }
     setChallenges(newChallenges);
-    notify('Challenge updated for ' + dateStr);
+    SupabaseService.saveChallenge(target);
   };
 
-  // --- PATH HELPERS ---
+  // --- PATHS ---
   const addPath = () => {
-    const newPath: Topic = { id: `path-${Date.now()}`, title: 'New Path', description: 'Describe...', icon: 'Binary', modules: [], interviewQuestions: [] };
+    const newPath: Topic = { 
+      id: `path-${Date.now()}`, 
+      title: 'New Cloud Track', 
+      description: 'Master a new engineering domain.', 
+      icon: 'Binary', 
+      isVisible: false,
+      modules: [], 
+      interviewQuestions: [] 
+    };
     setTopics([...topics, newPath]);
     setSelectedTopicId(newPath.id);
-    notify('Path created');
+    SupabaseService.saveTopic(newPath);
+    notify('Cloud Track Created');
   };
-
-  const updateTopic = (updated: Topic) => setTopics(topics.map(t => t.id === updated.id ? updated : t));
 
   const confirmDeletePath = async () => {
     if (!pathToDelete) return;
     setIsDeleting(true);
-    
-    // Simulate API latency
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    const remainingPaths = topics.filter(t => t.id !== pathToDelete);
-    setTopics(remainingPaths);
-    
-    if (selectedTopicId === pathToDelete) {
-      setSelectedTopicId(remainingPaths[0]?.id || null);
-    }
-    
+    await SupabaseService.deleteTopic(pathToDelete);
+    const remaining = topics.filter(t => t.id !== pathToDelete);
+    setTopics(remaining);
+    if (selectedTopicId === pathToDelete) setSelectedTopicId(remaining[0]?.id || null);
     setPathToDelete(null);
     setIsDeleting(false);
-    notify('Path deleted successfully');
+    notify('Track Removed from Cloud');
   };
 
-  const movePath = (index: number, direction: 'up' | 'down') => {
-    const newTopics = [...topics];
-    const target = direction === 'up' ? index - 1 : index + 1;
-    if (target >= 0 && target < newTopics.length) {
-      [newTopics[index], newTopics[target]] = [newTopics[target], newTopics[index]];
-      setTopics(newTopics);
-    }
-  };
-
-  // --- MODULE HELPERS ---
-  const addModule = () => {
-    if (!selectedTopic) return;
-    const newMod: Module = { id: `mod-${Date.now()}`, title: 'New Module', description: '', problems: [] };
-    updateTopic({ ...selectedTopic, modules: [...selectedTopic.modules, newMod] });
-  };
-  const updateModule = (modId: string, data: Partial<Module>) => {
-    if (!selectedTopic) return;
-    updateTopic({ ...selectedTopic, modules: selectedTopic.modules.map(m => m.id === modId ? { ...m, ...data } : m) });
-  };
-  const deleteModule = (modId: string) => {
-    if (!selectedTopic) return;
-    updateTopic({ ...selectedTopic, modules: selectedTopic.modules.filter(m => m.id !== modId) });
-  };
-  const moveModule = (index: number, direction: 'up' | 'down') => {
-    if (!selectedTopic) return;
-    const newModules = [...selectedTopic.modules];
-    const target = direction === 'up' ? index - 1 : index + 1;
-    if (target >= 0 && target < newModules.length) {
-      [newModules[index], newModules[target]] = [newModules[target], newModules[index]];
-      updateTopic({ ...selectedTopic, modules: newModules });
-    }
-  };
-
-  // --- CONTENT HELPERS ---
-  const addProblemToModule = (modId: string) => {
-    if (!selectedTopic) return;
-    const newProblem: DailyProblem = { id: `prob-${Date.now()}`, title: 'New Problem', description: '', difficulty: 'EASY', points: 10, platform: PlatformType.LEETCODE, externalLink: '' };
-    updateModule(modId, { problems: [...(selectedTopic.modules.find(m => m.id === modId)?.problems || []), newProblem] });
-  };
-  const updateProblem = (modId: string, probId: string, data: Partial<DailyProblem>) => {
-    if (!selectedTopic) return;
-    const mod = selectedTopic.modules.find(m => m.id === modId);
-    if (mod) updateModule(modId, { problems: mod.problems.map(p => p.id === probId ? { ...p, ...data } : p) });
-  };
-  const deleteProblem = (modId: string, probId: string) => {
-    if (!selectedTopic) return;
-    const mod = selectedTopic.modules.find(m => m.id === modId);
-    if (mod) updateModule(modId, { problems: mod.problems.filter(p => p.id !== probId) });
-  };
-
-  // --- USER HELPERS ---
-  const toggleBlockUser = (id: string) => {
+  const toggleBlockUser = async (id: string) => {
     if (id === user.id) return;
-    setUsers(users.map(u => u.id === id ? { ...u, isBlocked: !u.isBlocked } : u));
-    notify('User status updated');
+    const targetUser = users.find(u => u.id === id);
+    if (!targetUser) return;
+    const updatedUser = { ...targetUser, isBlocked: !targetUser.isBlocked };
+    setUsers(users.map(u => u.id === id ? updatedUser : u));
+    await SupabaseService.updateUserProfile(updatedUser);
+    notify('User access updated');
   };
-  const exportUsers = (format: 'csv' | 'excel') => {
-    const headers = ['ID', 'Name', 'Email', 'Role', 'XP', 'Streak', 'Status'];
-    const data = users.map(u => [u.id, u.name, u.email, u.role, u.points || 0, u.streak || 0, u.isBlocked ? 'Blocked' : 'Active']);
-    const content = [headers, ...data].map(row => row.join(',')).join('\n');
-    const blob = new Blob([content], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `codenexus_users.${format}`;
-    a.click();
-    notify('Users exported');
-  };
+
+  const currentChallenge = challenges.find(c => c.date === selectedDate);
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   return (
     <Layout user={user} onLogout={onLogout} isDark={isDark} setDark={setDark}>
       <div className="max-w-7xl mx-auto pb-20 animate-fade">
-        {/* SUPER PANEL HEADER */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 pb-8 border-b border-border">
-          <div className="flex items-start gap-4">
-            <div className="p-2 bg-slate-900 dark:bg-white text-white dark:text-black rounded-lg">
-              <Settings2 size={20} />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 pb-4 border-b border-border">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg">
+                <ShieldCheck size={16} />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight">Cloud Admin</h1>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Admin Super Panel</h1>
-              <p className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">Platform Curriculum & User Management</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={handleSave}
-              disabled={isSavingToMongo}
-              className="px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-md text-[12px] font-bold uppercase tracking-widest transition-all flex items-center gap-2 hover:opacity-90 active:scale-95 disabled:opacity-50"
-            >
-              {isSavingToMongo ? <Loader2 size={14} className="animate-spin" /> : <DatabaseZap size={14} />}
-              Manual Sync
-            </button>
-
-            <div className="flex p-1 bg-slate-100 dark:bg-zinc-900 rounded-xl border border-border">
-              {[
-                { id: 'PATHS', label: 'Paths', icon: <Layers size={14} /> },
-                { id: 'DAILY', label: 'Daily', icon: <CalendarIcon size={14} /> },
-                { id: 'USERS', label: 'Users', icon: <Users size={14} /> }
-              ].map(tab => (
+            <nav className="flex gap-1">
+              {['PATHS', 'DAILY', 'USERS'].map(id => (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as AdminTab)}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-[12px] font-bold uppercase tracking-wider transition-all ${
-                    activeTab === tab.id ? 'bg-white dark:bg-zinc-800 text-brand-accent shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
-                  }`}
+                  key={id}
+                  onClick={() => setActiveTab(id as AdminTab)}
+                  className={`px-4 py-1.5 rounded-lg text-[13px] font-medium transition-all ${activeTab === id ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900'}`}
                 >
-                  {tab.icon} {tab.label}
+                  {id}
                 </button>
               ))}
-            </div>
+            </nav>
           </div>
         </div>
 
-        {/* FEEDBACK TOAST */}
         {feedback && (
-          <div className={`fixed bottom-8 right-8 z-[100] px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade border ${
-            feedback.type === 'success' ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-red-500 text-white border-red-400'
-          }`}>
-            <Check size={18} />
-            <span className="text-[13px] font-bold">{feedback.msg}</span>
+          <div className="fixed bottom-8 right-8 z-[100] px-6 py-3 bg-zinc-900 text-white rounded-xl shadow-2xl flex items-center gap-3 animate-fade">
+            <Check size={16} /> <span className="text-[13px] font-bold">{feedback.msg}</span>
           </div>
         )}
 
-        {/* TAB CONTENT: PATHS */}
         {activeTab === 'PATHS' && (
-          <div className="flex flex-col lg:flex-row gap-8 min-h-[600px]">
-            <aside className="w-full lg:w-64 space-y-4 shrink-0">
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Pathways List</h3>
-                <button onClick={addPath} className="p-1 text-slate-400 hover:text-brand-accent transition-colors" title="Create New Path">
-                  <PlusCircle size={18} />
-                </button>
+          <div className="flex flex-col lg:flex-row gap-10">
+            <aside className="w-full lg:w-72 space-y-4">
+              <div className="flex justify-between px-2">
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Cloud Tracks</h3>
+                <button onClick={addPath} className="p-1 text-zinc-400 hover:text-zinc-900"><Plus size={16} /></button>
               </div>
               <div className="space-y-1">
-                {topics.map((t, idx) => (
-                  <div key={t.id} className="group relative">
+                {topics.map((t) => (
+                  <div key={t.id} className="group flex items-center gap-2 pr-2">
                     <button
                       onClick={() => setSelectedTopicId(t.id)}
-                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-[13px] font-bold transition-all border ${
-                        selectedTopicId === t.id 
-                        ? 'bg-brand-accent/5 text-brand-accent border-brand-accent/30 shadow-sm' 
-                        : 'bg-white dark:bg-zinc-900 border-border hover:border-slate-300 dark:hover:border-zinc-700'
-                      }`}
+                      className={`flex-1 text-left px-3 py-2 rounded-lg text-[13px] font-medium truncate ${selectedTopicId === t.id ? 'bg-zinc-100 dark:bg-zinc-800' : 'text-zinc-500'}`}
                     >
-                      <span className="truncate pr-4">{t.title}</span>
-                      <ChevronRight size={14} className={`shrink-0 transition-opacity ${selectedTopicId === t.id ? 'opacity-100' : 'opacity-0'}`} />
+                      {t.title}
                     </button>
-                    
-                    {/* Floating Controls: Reorder & Delete */}
-                    <div className="absolute -right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all z-10 scale-90 group-hover:scale-100">
-                      <button onClick={(e) => { e.stopPropagation(); movePath(idx, 'up'); }} className="bg-white dark:bg-zinc-800 p-1 rounded-md border border-border shadow-md hover:text-brand-accent"><ArrowUp size={10} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); setPathToDelete(t.id); }} className="bg-white dark:bg-zinc-800 p-1 rounded-md border border-border shadow-md hover:text-red-500"><Trash2 size={10} /></button>
-                      <button onClick={(e) => { e.stopPropagation(); movePath(idx, 'down'); }} className="bg-white dark:bg-zinc-800 p-1 rounded-md border border-border shadow-md hover:text-brand-accent"><ArrowDown size={10} /></button>
-                    </div>
+                    <button onClick={() => setPathToDelete(t.id)} className="opacity-0 group-hover:opacity-100 p-1 text-zinc-300 hover:text-red-500"><Trash2 size={13} /></button>
                   </div>
                 ))}
-
-                {topics.length === 0 && (
-                  <div className="py-8 text-center px-4">
-                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed italic">No pathways created yet. Start by clicking the plus icon.</p>
-                  </div>
-                )}
               </div>
             </aside>
 
-            <div className="flex-1 space-y-8">
+            <div className="flex-1 space-y-10">
               {selectedTopic ? (
                 <div className="space-y-8 animate-fade">
-                  <div className="bg-white dark:bg-zinc-950 p-8 rounded-2xl border border-border shadow-sm space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 max-w-2xl space-y-4">
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Edit3 size={14} />
-                          <input 
-                            value={selectedTopic.title} 
-                            onChange={e => updateTopic({ ...selectedTopic, title: e.target.value })}
-                            className="text-2xl font-bold bg-transparent border-none outline-none focus:text-brand-accent w-full"
-                          />
-                        </div>
-                        <textarea 
-                          value={selectedTopic.description}
-                          onChange={e => updateTopic({ ...selectedTopic, description: e.target.value })}
-                          className="w-full bg-transparent border-none outline-none text-[14px] text-slate-500 font-medium resize-none"
-                          rows={2}
-                        />
-                      </div>
+                  <div className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-border">
+                    <div className="flex items-center gap-3">
+                      <VisibilityToggle isVisible={selectedTopic.isVisible || false} onChange={val => handleUpdateTopic({ ...selectedTopic, isVisible: val })} />
+                      <span className="text-[13px] font-bold">Track is {selectedTopic.isVisible ? 'Public' : 'Hidden'}</span>
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between px-2">
-                      <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Modules</h3>
-                      <button onClick={addModule} className="flex items-center gap-2 text-[12px] font-bold text-brand-accent bg-brand-accent/5 px-4 py-1.5 rounded-lg border border-brand-accent/10 hover:bg-brand-accent/10 transition-all">
-                        <Plus size={16} /> Add Module
-                      </button>
-                    </div>
-                    {selectedTopic.modules.map((mod, mIdx) => (
-                      <div key={mod.id} className="bg-white dark:bg-zinc-900 rounded-2xl border border-border shadow-sm overflow-hidden group">
-                        <div className="px-6 py-4 bg-slate-50/50 dark:bg-white/5 border-b border-border flex items-center justify-between">
-                          <div className="flex items-center gap-4 flex-1">
-                            <input value={mod.title} onChange={e => updateModule(mod.id, { title: e.target.value })} className="bg-transparent border-none outline-none font-bold text-[14px] flex-1" />
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <button onClick={() => deleteModule(mod.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                          </div>
+                    <input 
+                      value={selectedTopic.title} 
+                      onChange={e => handleUpdateTopic({ ...selectedTopic, title: e.target.value })}
+                      className="text-3xl font-black bg-transparent border-none outline-none w-full tracking-tight"
+                    />
+                    <textarea 
+                      value={selectedTopic.description}
+                      onChange={e => handleUpdateTopic({ ...selectedTopic, description: e.target.value })}
+                      className="w-full bg-transparent border-none outline-none text-[14px] text-zinc-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-6">
+                    <button 
+                      onClick={() => {
+                        const newMod: Module = { id: `mod-${Date.now()}`, title: 'New Unit', description: '', problems: [] };
+                        handleUpdateTopic({ ...selectedTopic, modules: [...selectedTopic.modules, newMod] });
+                      }}
+                      className="w-full py-4 border-2 border-dashed border-border rounded-xl text-[12px] font-black uppercase tracking-widest text-zinc-400 hover:border-zinc-400 hover:text-zinc-900 transition-all"
+                    >
+                      + Add Learning Unit
+                    </button>
+
+                    {selectedTopic.modules.map((mod, modIdx) => (
+                      <div key={mod.id} className="bg-white dark:bg-zinc-950 border border-border rounded-xl overflow-hidden shadow-sm">
+                        <div className="p-4 bg-zinc-50/50 dark:bg-zinc-900/50 border-b border-border flex items-center justify-between">
+                          <input 
+                            value={mod.title} 
+                            onChange={e => {
+                              const updatedModules = [...selectedTopic.modules];
+                              updatedModules[modIdx] = { ...mod, title: e.target.value };
+                              handleUpdateTopic({ ...selectedTopic, modules: updatedModules });
+                            }}
+                            className="bg-transparent font-bold text-[14px] flex-1 outline-none"
+                          />
+                          <button onClick={() => handleUpdateTopic({ ...selectedTopic, modules: selectedTopic.modules.filter(m => m.id !== mod.id) })} className="text-zinc-300 hover:text-red-500"><Trash2 size={14} /></button>
                         </div>
-                        <div className="p-6 space-y-6">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <input value={mod.videoUrl || ''} onChange={e => updateModule(mod.id, { videoUrl: e.target.value })} placeholder="Video Embed URL" className="bg-slate-50 dark:bg-zinc-950 border border-border px-3 py-2 rounded-lg text-[12px] outline-none" />
-                            <input value={mod.pdfUrl || ''} onChange={e => updateModule(mod.id, { pdfUrl: e.target.value })} placeholder="PDF View URL" className="bg-slate-50 dark:bg-zinc-950 border border-border px-3 py-2 rounded-lg text-[12px] outline-none" />
+                        <div className="p-4 space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <input placeholder="Video URL" value={mod.videoUrl || ''} onChange={e => {
+                               const mods = [...selectedTopic.modules];
+                               mods[modIdx] = { ...mod, videoUrl: e.target.value };
+                               handleUpdateTopic({ ...selectedTopic, modules: mods });
+                            }} className="bg-zinc-50 dark:bg-zinc-900 border border-border p-2 rounded text-[12px] outline-none" />
+                            <input placeholder="PDF URL" value={mod.pdfUrl || ''} onChange={e => {
+                               const mods = [...selectedTopic.modules];
+                               mods[modIdx] = { ...mod, pdfUrl: e.target.value };
+                               handleUpdateTopic({ ...selectedTopic, modules: mods });
+                            }} className="bg-zinc-50 dark:bg-zinc-900 border border-border p-2 rounded text-[12px] outline-none" />
                           </div>
+                          
                           <div className="space-y-2">
-                            <div className="flex items-center justify-between"><label className="text-[10px] font-bold text-slate-400 uppercase">Coding Challenges</label><button onClick={() => addProblemToModule(mod.id)} className="text-[11px] font-bold text-brand-accent hover:underline">+ Link Problem</button></div>
-                            {mod.problems.map(p => (
-                              <div key={p.id} className="flex items-center gap-4 bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-border">
-                                <input value={p.title} onChange={e => updateProblem(mod.id, p.id, { title: e.target.value })} className="bg-transparent border-none outline-none text-[13px] font-bold flex-1" placeholder="Title" />
-                                <input value={p.externalLink} onChange={e => updateProblem(mod.id, p.id, { externalLink: e.target.value })} className="bg-transparent border-none outline-none text-[12px] text-slate-500 flex-1" placeholder="Link" />
-                                <button onClick={() => deleteProblem(mod.id, p.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
-                              </div>
-                            ))}
+                             {mod.problems.map((p, pIdx) => (
+                               <div key={p.id} className="flex gap-2 items-center bg-zinc-50 dark:bg-zinc-900/50 p-2 rounded-lg border border-border">
+                                  <input value={p.title} onChange={e => {
+                                    const mods = [...selectedTopic.modules];
+                                    const probs = [...mod.problems];
+                                    probs[pIdx] = { ...p, title: e.target.value };
+                                    mods[modIdx] = { ...mod, problems: probs };
+                                    handleUpdateTopic({ ...selectedTopic, modules: mods });
+                                  }} className="bg-transparent font-bold text-[12px] flex-1 outline-none" />
+                                  <input value={p.externalLink} onChange={e => {
+                                    const mods = [...selectedTopic.modules];
+                                    const probs = [...mod.problems];
+                                    probs[pIdx] = { ...p, externalLink: e.target.value };
+                                    mods[modIdx] = { ...mod, problems: probs };
+                                    handleUpdateTopic({ ...selectedTopic, modules: mods });
+                                  }} className="bg-transparent text-[11px] text-zinc-500 flex-1 outline-none truncate" />
+                                  <button onClick={() => {
+                                    const mods = [...selectedTopic.modules];
+                                    mods[modIdx] = { ...mod, problems: mod.problems.filter(item => item.id !== p.id) };
+                                    handleUpdateTopic({ ...selectedTopic, modules: mods });
+                                  }}><X size={14} className="text-zinc-300" /></button>
+                               </div>
+                             ))}
+                             <button 
+                               onClick={() => {
+                                 const mods = [...selectedTopic.modules];
+                                 const newP: DailyProblem = { id: `p-${Date.now()}`, title: 'Problem', description: '', difficulty: 'EASY', points: 10, platform: PlatformType.LEETCODE, externalLink: '' };
+                                 mods[modIdx] = { ...mod, problems: [...mod.problems, newP] };
+                                 handleUpdateTopic({ ...selectedTopic, modules: mods });
+                               }}
+                               className="text-[11px] font-bold text-zinc-400 hover:text-zinc-900"
+                             >+ Add Problem</button>
                           </div>
                         </div>
                       </div>
                     ))}
-                    {selectedTopic.modules.length === 0 && (
-                      <div className="py-12 text-center text-slate-400 border-2 border-dashed border-border rounded-2xl">
-                         <Layers size={32} className="mx-auto mb-3 opacity-20" />
-                         <p className="text-[12px] font-bold uppercase tracking-widest">No modules added yet</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
-                <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-border rounded-3xl text-slate-300 py-40">
-                  <Database size={48} className="mb-4 opacity-20" />
-                  <p className="text-[14px] font-bold uppercase tracking-widest">Select or Create a Path to Begin Editing</p>
+                <div className="py-40 text-center text-zinc-300 font-bold uppercase tracking-widest border-2 border-dashed border-border rounded-xl">
+                  Select a cloud track to begin editing
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB CONTENT: DAILY CHALLENGE (CALENDAR) */}
         {activeTab === 'DAILY' && (
-          <div className="space-y-8 animate-fade">
-            <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-border shadow-sm space-y-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Daily Challenge Calendar</h2>
-                  <p className="text-[13px] text-slate-500 font-medium">Select a date to schedule coding challenges for students.</p>
-                </div>
-                <div className="flex items-center gap-4 bg-slate-50 dark:bg-zinc-800 px-4 py-2 rounded-xl border border-border">
-                   <button onClick={() => changeMonth('prev')} className="p-1 hover:text-brand-accent"><ChevronLeft size={20} /></button>
-                   <span className="text-[14px] font-bold text-slate-800 dark:text-white min-w-[140px] text-center">{monthNames[currentMonth]} {currentYear}</span>
-                   <button onClick={() => changeMonth('next')} className="p-1 hover:text-brand-accent"><ChevronRightIcon size={20} /></button>
+          <div className="flex flex-col lg:flex-row gap-12">
+            <div className="flex-1 space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-black tracking-tight">{monthNames[currentMonth]} {currentYear}</h2>
+                <div className="flex gap-2">
+                   <button onClick={() => setCurrentMonth(prev => prev === 0 ? 11 : prev - 1)} className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg"><ChevronLeft size={16} /></button>
+                   <button onClick={() => setCurrentMonth(prev => prev === 11 ? 0 : prev + 1)} className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg"><ChevronRight size={16} /></button>
                 </div>
               </div>
-
-              {/* CALENDAR GRID */}
-              <div className="grid grid-cols-7 gap-px bg-border border border-border rounded-xl overflow-hidden">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-                  <div key={d} className="bg-slate-50 dark:bg-zinc-800/50 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">{d}</div>
-                ))}
-                {Array.from({ length: firstDayOfMonth }).map((_, i) => (
-                  <div key={`empty-${i}`} className="bg-white dark:bg-zinc-900 h-28 md:h-32 opacity-30" />
-                ))}
+              <div className="grid grid-cols-7 gap-1">
+                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d} className="text-center text-[10px] font-black text-zinc-400 py-2">{d}</div>)}
+                {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={i} />)}
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const day = i + 1;
-                  const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const challenge = getChallengeForDate(dateStr);
-                  const isToday = new Date().toISOString().split('T')[0] === dateStr;
-
+                  const ds = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const has = challenges.some(c => c.date === ds);
                   return (
-                    <div 
-                      key={day} 
-                      onClick={() => handleDayClick(day)}
-                      className={`bg-white dark:bg-zinc-900 h-28 md:h-32 p-3 border-t border-l border-transparent hover:border-brand-accent/50 cursor-pointer transition-all relative ${isToday ? 'ring-2 ring-brand-accent ring-inset' : ''}`}
-                    >
-                      <span className={`text-[12px] font-bold ${isToday ? 'text-brand-accent' : 'text-slate-400'}`}>{day}</span>
-                      {challenge && challenge.problems.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {challenge.problems.slice(0, 2).map(p => (
-                            <div key={p.id} className="text-[9px] font-bold px-1.5 py-0.5 bg-brand-accent/5 text-brand-accent rounded border border-brand-accent/10 truncate">
-                              {p.title}
-                            </div>
-                          ))}
-                          {challenge.problems.length > 2 && (
-                            <div className="text-[8px] font-bold text-slate-400 pl-1">+{challenge.problems.length - 2} more</div>
-                          )}
-                          <div className="absolute bottom-2 right-2 w-1.5 h-1.5 rounded-full bg-brand-accent shadow-[0_0_8px_rgba(0,112,243,0.5)]" />
-                        </div>
-                      )}
-                    </div>
+                    <button key={day} onClick={() => setSelectedDate(ds)} className={`h-16 rounded-lg border p-2 flex flex-col justify-between transition-all ${selectedDate === ds ? 'bg-zinc-900 dark:bg-white text-white dark:text-black border-zinc-900' : 'bg-white dark:bg-zinc-950 border-border hover:border-zinc-300'}`}>
+                      <span className="text-[11px] font-bold">{day}</span>
+                      {has && <div className={`w-1.5 h-1.5 rounded-full mx-auto ${selectedDate === ds ? 'bg-white dark:bg-black' : 'bg-emerald-500'}`} />}
+                    </button>
                   );
                 })}
               </div>
             </div>
+
+            <div className="w-full lg:w-96 bg-zinc-50 dark:bg-zinc-900/50 border border-border rounded-2xl p-6">
+               <h3 className="text-[13px] font-black tracking-tight mb-6">Schedule for {selectedDate}</h3>
+               <div className="space-y-4">
+                  {(currentChallenge?.problems || []).map((p, idx) => (
+                    <div key={p.id} className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-border space-y-3">
+                       <input value={p.title} onChange={e => {
+                         const probs = [...(currentChallenge?.problems || [])];
+                         probs[idx] = { ...p, title: e.target.value };
+                         handleUpdateChallenge(selectedDate, probs);
+                       }} className="w-full bg-transparent font-bold text-[13px] outline-none" />
+                       <input value={p.externalLink} onChange={e => {
+                         const probs = [...(currentChallenge?.problems || [])];
+                         probs[idx] = { ...p, externalLink: e.target.value };
+                         handleUpdateChallenge(selectedDate, probs);
+                       }} className="w-full bg-transparent text-[11px] text-zinc-500 outline-none truncate" />
+                       <div className="flex justify-between items-center pt-2 border-t border-border">
+                          <button onClick={() => handleUpdateChallenge(selectedDate, (currentChallenge?.problems || []).filter(item => item.id !== p.id))} className="text-zinc-300 hover:text-red-500"><Trash2 size={13} /></button>
+                          <div className="flex items-center gap-2">
+                             <Zap size={10} className="text-amber-500" />
+                             <input type="number" value={p.points} onChange={e => {
+                                const probs = [...(currentChallenge?.problems || [])];
+                                probs[idx] = { ...p, points: parseInt(e.target.value) || 0 };
+                                handleUpdateChallenge(selectedDate, probs);
+                             }} className="w-10 bg-transparent text-[11px] font-black text-center outline-none" />
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+                  <button 
+                    onClick={() => {
+                      const probs = [...(currentChallenge?.problems || [])];
+                      probs.push({ id: `dp-${Date.now()}`, title: 'New Challenge', description: '', difficulty: 'EASY', points: 10, platform: PlatformType.LEETCODE, externalLink: '' });
+                      handleUpdateChallenge(selectedDate, probs);
+                    }}
+                    className="w-full py-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl text-[12px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                  >+ New Challenge Slot</button>
+               </div>
+            </div>
           </div>
         )}
 
-        {/* TAB CONTENT: USERS */}
         {activeTab === 'USERS' && (
-          <div className="space-y-8 animate-fade">
-            <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-border shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="flex-1 space-y-4">
-                <div><h2 className="text-lg font-bold">User Registry</h2><p className="text-[13px] text-slate-500">{users.length} Candidates registered.</p></div>
-                <div className="relative max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input type="text" placeholder="Search..." value={searchUser} onChange={e => setSearchUser(e.target.value)} className="w-full bg-slate-50 dark:bg-zinc-950 border border-border pl-10 pr-4 py-2.5 rounded-xl text-[13px] outline-none" />
+          <div className="bg-white dark:bg-zinc-950 border border-border rounded-xl overflow-hidden shadow-sm">
+             <div className="p-6 border-b border-border flex flex-col md:flex-row gap-4 justify-between">
+                <div className="relative flex-1 max-w-sm">
+                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                   <input placeholder="Search students..." value={searchUser} onChange={e => setSearchUser(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-900 border border-border pl-10 pr-4 py-2 rounded-lg text-[13px] outline-none" />
                 </div>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => exportUsers('csv')} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-[12px] font-bold border border-emerald-500/20"><FileSpreadsheet size={16} /> Export CSV</button>
-              </div>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-border rounded-2xl shadow-sm overflow-hidden">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50/50 dark:bg-white/5 border-b border-border text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                    <th className="px-8 py-4">Candidate</th><th className="px-8 py-4 text-center">XP</th><th className="px-8 py-4 text-right">Status</th>
+             </div>
+             <table className="w-full text-left">
+                <thead className="bg-zinc-50/50 dark:bg-white/5 text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-border">
+                  <tr>
+                    <th className="px-6 py-4">Student Profile</th>
+                    <th className="px-6 py-4">Password (Supabase Sync)</th>
+                    <th className="px-6 py-4 text-center">Cloud XP</th>
+                    <th className="px-6 py-4 text-right">Access Control</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {users.filter(u => u.name.toLowerCase().includes(searchUser.toLowerCase())).map(u => (
-                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-white/5">
-                      <td className="px-8 py-4 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-slate-400">{u.name[0]}</div>
-                        <div><p className="text-[13px] font-bold">{u.name}</p><p className="text-[11px] text-slate-500">{u.email}</p></div>
-                      </td>
-                      <td className="px-8 py-4 text-center font-bold">{u.points}</td>
-                      <td className="px-8 py-4 text-right">
-                        <button onClick={() => toggleBlockUser(u.id)} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${u.isBlocked ? 'bg-red-50 text-red-600 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                          {u.isBlocked ? 'Blocked' : 'Active'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                   {users.filter(u => u.name.toLowerCase().includes(searchUser.toLowerCase())).map(u => (
+                     <tr key={u.id} className="hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 flex items-center gap-3">
+                           <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-black text-zinc-400 text-[10px]">{u.name[0]}</div>
+                           <div><p className="text-[13px] font-bold">{u.name}</p><p className="text-[11px] text-zinc-500">{u.email}</p></div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-[11px] text-zinc-400">{u.password}</td>
+                        <td className="px-6 py-4 text-center font-bold text-[13px]">{u.points}</td>
+                        <td className="px-6 py-4 text-right">
+                           <button onClick={() => toggleBlockUser(u.id)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${u.isBlocked ? 'bg-red-50 text-red-500 border-red-100' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}>
+                              {u.isBlocked ? 'Blocked' : 'Active'}
+                           </button>
+                        </td>
+                     </tr>
+                   ))}
                 </tbody>
-              </table>
-            </div>
+             </table>
           </div>
         )}
 
-        {/* SIDE OVERLAY PANEL FOR DATE EDITING */}
-        {editingDate && (
-          <div className="fixed inset-0 z-[110] flex justify-end">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setEditingDate(null)} />
-            <div className="relative w-full max-w-md bg-white dark:bg-zinc-950 h-full shadow-2xl flex flex-col animate-slide-left">
-              <div className="px-8 py-6 border-b border-border flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">Daily Challenge</h3>
-                  <p className="text-[12px] font-bold text-brand-accent uppercase tracking-widest">{editingDate}</p>
-                </div>
-                <button onClick={() => setEditingDate(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg"><X size={20} /></button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Scheduled Problems (Max 5)</h4>
-                    <button 
-                      onClick={() => {
-                        const currentSet = getChallengeForDate(editingDate);
-                        const problems = currentSet?.problems || [];
-                        if (problems.length >= 5) return notify('Max 5 problems per day', 'error');
-                        const newP: DailyProblem = { id: `dp-${Date.now()}`, title: 'New Problem', description: '', difficulty: 'EASY', points: 10, platform: PlatformType.LEETCODE, externalLink: '' };
-                        saveChallenge(editingDate, [...problems, newP]);
-                      }}
-                      className="text-[11px] font-bold text-brand-accent hover:underline"
-                    >
-                      + Add Problem
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {(getChallengeForDate(editingDate)?.problems || []).map((p, idx) => (
-                      <div key={p.id} className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-xl border border-border space-y-3 relative group">
-                        <button 
-                          onClick={() => {
-                            const probs = getChallengeForDate(editingDate)!.problems.filter(item => item.id !== p.id);
-                            saveChallenge(editingDate, probs);
-                          }}
-                          className="absolute -top-2 -right-2 p-1 bg-white dark:bg-zinc-800 border border-border rounded-full text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X size={12} />
-                        </button>
-                        <input 
-                          value={p.title} 
-                          onChange={e => {
-                            const probs = [...getChallengeForDate(editingDate)!.problems];
-                            probs[idx] = { ...probs[idx], title: e.target.value };
-                            saveChallenge(editingDate, probs);
-                          }}
-                          placeholder="Problem Title" 
-                          className="w-full bg-transparent border-none outline-none font-bold text-[14px]" 
-                        />
-                        <input 
-                          value={p.externalLink} 
-                          onChange={e => {
-                            const probs = [...getChallengeForDate(editingDate)!.problems];
-                            probs[idx] = { ...probs[idx], externalLink: e.target.value };
-                            saveChallenge(editingDate, probs);
-                          }}
-                          placeholder="Platform Link" 
-                          className="w-full bg-transparent border-none outline-none text-[12px] text-slate-500 font-medium" 
-                        />
-                        <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                           <select 
-                             value={p.difficulty}
-                             onChange={e => {
-                               const probs = [...getChallengeForDate(editingDate)!.problems];
-                               probs[idx] = { ...probs[idx], difficulty: e.target.value as any };
-                               saveChallenge(editingDate, probs);
-                             }}
-                             className="bg-transparent border-none outline-none text-[10px] font-bold text-slate-400 uppercase"
-                           >
-                             <option value="EASY">Easy</option>
-                             <option value="MEDIUM">Medium</option>
-                             <option value="HARD">Hard</option>
-                           </select>
-                           <div className="flex items-center gap-1">
-                             <input 
-                               type="number" 
-                               value={p.points} 
-                               onChange={e => {
-                                 const probs = [...getChallengeForDate(editingDate)!.problems];
-                                 probs[idx] = { ...probs[idx], points: parseInt(e.target.value) || 0 };
-                                 saveChallenge(editingDate, probs);
-                               }}
-                               className="w-10 bg-transparent border-none outline-none text-[11px] font-bold text-amber-600 text-right" 
-                             />
-                             <span className="text-[10px] font-bold text-slate-300">XP</span>
-                           </div>
-                        </div>
-                      </div>
-                    ))}
-                    {(getChallengeForDate(editingDate)?.problems || []).length === 0 && (
-                      <div className="py-12 text-center text-slate-400 border-2 border-dashed border-border rounded-xl">
-                        <Clock size={24} className="mx-auto mb-2 opacity-20" />
-                        <p className="text-[11px] font-bold uppercase tracking-widest">No challenges scheduled</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-8 border-t border-border">
-                <button 
-                  onClick={() => setEditingDate(null)}
-                  className="w-full py-4 bg-slate-900 dark:bg-white text-white dark:text-black rounded-xl text-[14px] font-bold flex items-center justify-center gap-2 shadow-xl"
-                >
-                  <Save size={18} /> Confirm Schedule
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* DELETE PATHWAY MODAL */}
         {pathToDelete && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade" onClick={() => !isDeleting && setPathToDelete(null)} />
-             <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden animate-fade border border-border">
-                <div className="p-8 space-y-6 text-center">
-                   <div className="w-16 h-16 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                      <AlertTriangle size={32} />
-                   </div>
-                   <div className="space-y-2">
-                      <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Delete Pathway?</h3>
-                      <p className="text-[13px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed px-4">
-                        This will remove all modules, videos, PDFs, and problems inside this pathway. This action cannot be undone.
-                      </p>
-                   </div>
-                   
-                   <div className="flex gap-3">
-                      <button 
-                        disabled={isDeleting}
-                        onClick={() => setPathToDelete(null)}
-                        className="flex-1 py-3.5 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-xl text-[13px] font-bold hover:bg-slate-200 dark:hover:bg-white/10 transition-all disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        disabled={isDeleting}
-                        onClick={confirmDeletePath}
-                        className="flex-1 py-3.5 bg-red-500 text-white rounded-xl text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-red-600 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50"
-                      >
-                        {isDeleting ? <Loader2 size={16} className="animate-spin" /> : 'Delete Path'}
-                      </button>
-                   </div>
+             <div className="absolute inset-0 bg-zinc-950/40 backdrop-blur-sm" onClick={() => !isDeleting && setPathToDelete(null)} />
+             <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-8 text-center space-y-6">
+                <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto"><AlertTriangle size={24} /></div>
+                <div><h3 className="text-lg font-bold">Remove Cloud Track?</h3><p className="text-[13px] text-zinc-500 mt-1">This will permanently delete this curriculum from Supabase.</p></div>
+                <div className="flex gap-2">
+                   <button disabled={isDeleting} onClick={() => setPathToDelete(null)} className="flex-1 py-2.5 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-[13px] font-bold">Cancel</button>
+                   <button disabled={isDeleting} onClick={confirmDeletePath} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-[13px] font-bold flex items-center justify-center gap-2">
+                     {isDeleting ? <Loader2 size={16} className="animate-spin" /> : 'Delete From Cloud'}
+                   </button>
                 </div>
              </div>
           </div>

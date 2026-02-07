@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, Link, Navigate } from 'react-router-dom';
 import { Topic, User, UserProgress, Module, DailyProblem, UserUnitProgress } from '../types';
 import Layout from '../components/Layout';
 import { 
@@ -42,8 +42,18 @@ const TopicPage: React.FC<TopicPageProps> = ({
   topics, isDark, onLogout, user, setDark, progress, onMarkAsAttempted, onUpdateUnitProgress, isSyncing 
 }) => {
   const { id } = useParams();
-  const topic = topics.find(t => t.id === id);
+  const rawTopic = topics.find(t => t.id === id);
   
+  // Filter modules for visibility
+  // Fix: Imported useMemo and added it to the dependency array logic for filtering visible modules
+  const topic = useMemo(() => {
+    if (!rawTopic) return null;
+    return {
+      ...rawTopic,
+      modules: rawTopic.modules.filter(m => m.isVisible)
+    };
+  }, [rawTopic]);
+
   const [selectedModule, setSelectedModule] = useState<Module | null>(null);
   const [contentType, setContentType] = useState<ContentType>('VIDEO');
   const [selectedProblem, setSelectedProblem] = useState<DailyProblem | null>(null);
@@ -63,7 +73,8 @@ const TopicPage: React.FC<TopicPageProps> = ({
     }
   }, [topic]);
 
-  if (!topic) return <div className="p-10 font-bold text-red-500">Path not found.</div>;
+  if (!rawTopic || !rawTopic.isVisible) return <Navigate to="/" />;
+  if (!topic || topic.modules.length === 0) return <div className="p-10 font-bold text-zinc-500">No content available in this path.</div>;
 
   const scrollToTop = () => {
     if (mainContentRef.current) {
@@ -74,7 +85,6 @@ const TopicPage: React.FC<TopicPageProps> = ({
   const navigateToNextItem = () => {
     if (!selectedModule) return;
     
-    // 1. Check if there are more sub-units in current module
     if (contentType === 'VIDEO' && selectedModule.pdfUrl) {
       setContentType('PDF');
       scrollToTop();
@@ -87,12 +97,11 @@ const TopicPage: React.FC<TopicPageProps> = ({
       return;
     }
 
-    // 2. Otherwise, move to next module if available and unlocked
     const currentIdx = topic.modules.findIndex(m => m.id === selectedModule.id);
     if (currentIdx !== -1 && currentIdx + 1 < topic.modules.length) {
       const nextMod = topic.modules[currentIdx + 1];
       const nextProg = progress.unitProgress[nextMod.id];
-      if (nextProg?.unlocked) {
+      if (nextProg?.unlocked || currentIdx + 1 === 0) {
         handleSelectModule(nextMod);
       }
     }
@@ -128,7 +137,6 @@ const TopicPage: React.FC<TopicPageProps> = ({
       setTimeout(() => setXpAnimate(false), 1000);
     }
     
-    // Always navigate to next item to keep flow moving
     navigateToNextItem();
   };
 
@@ -139,7 +147,6 @@ const TopicPage: React.FC<TopicPageProps> = ({
 
   return (
     <div className={`h-screen flex flex-col bg-app transition-colors duration-200 ${isDark ? 'dark' : ''}`}>
-      {/* PROFESSIONAL HEADER */}
       <header className="h-14 shrink-0 border-b border-border bg-surface/80 backdrop-blur-md flex items-center justify-between px-6 z-50">
         <div className="flex items-center gap-4">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors text-slate-500">
@@ -164,12 +171,11 @@ const TopicPage: React.FC<TopicPageProps> = ({
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* SIDEBAR - 260px Fixed */}
         <aside className={`shrink-0 border-r border-border bg-white dark:bg-zinc-950 transition-all duration-300 overflow-y-auto ${isSidebarOpen ? 'w-[260px]' : 'w-0 opacity-0 pointer-events-none'}`}>
           <div className="p-4 space-y-6">
             <div className="px-2">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Course Units</h3>
-              <p className="text-[11px] font-medium text-slate-500">{progress.completedModuleIds.length} / {topic.modules.length} modules finished</p>
+              <p className="text-[11px] font-medium text-slate-500">{progress.completedModuleIds.filter(id => topic.modules.some(m => m.id === id)).length} / {topic.modules.length} modules finished</p>
             </div>
 
             <nav className="space-y-1">
@@ -218,7 +224,7 @@ const TopicPage: React.FC<TopicPageProps> = ({
                     </button>
                     
                     {isActive && (
-                      <div className="ml-7 mr-2 my-2 space-y-1 border-l border-border pl-4">
+                      <div className="ml-7 mr-2 my-2 border-l border-border pl-4 space-y-1">
                         {mod.videoUrl && (
                           <button 
                             onClick={() => setContentType('VIDEO')}
@@ -265,7 +271,6 @@ const TopicPage: React.FC<TopicPageProps> = ({
           </div>
         </aside>
 
-        {/* CONTENT STAGE - Centered 800px */}
         <main ref={mainContentRef} className="flex-1 overflow-y-auto bg-app p-8 md:p-12 scroll-smooth">
           <div className={`max-w-[800px] mx-auto transition-all duration-300 ${isNavigating ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}>
               
@@ -380,10 +385,9 @@ const TopicPage: React.FC<TopicPageProps> = ({
                 </div>
               )}
 
-            {/* NAVIGATION FOOTER */}
             <div className="mt-20 pt-10 border-t border-border flex justify-between items-center">
                <button 
-                 disabled={topic.modules[0].id === selectedModule?.id}
+                 disabled={topic.modules[0]?.id === selectedModule?.id}
                  onClick={() => {
                    const idx = topic.modules.findIndex(m => m.id === selectedModule?.id);
                    if (idx > 0) handleSelectModule(topic.modules[idx-1]);

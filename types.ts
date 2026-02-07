@@ -21,6 +21,7 @@ export enum RankTier {
 export interface User {
   id: string;
   email: string;
+  password?: string; // Visible for admin verification and dashboard
   role: UserRole;
   name: string;
   leetcodeUsername?: string;
@@ -48,6 +49,7 @@ export interface Module {
   videoUrl?: string;
   pdfUrl?: string;
   problems: DailyProblem[];
+  isVisible?: boolean;
 }
 
 export interface Topic {
@@ -57,6 +59,7 @@ export interface Topic {
   icon: string;
   modules: Module[];
   interviewQuestions: string[];
+  isVisible?: boolean;
 }
 
 export interface DailyChallengeSet {
@@ -85,5 +88,5 @@ export interface UserProgress {
   points: number;
   currentStreak: number;
   lastChallengeDate?: string;
-  completedDates: string[]; // Track which dates were fully completed
+  completedDates: [] | string[]; 
 }
