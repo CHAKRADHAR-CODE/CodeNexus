@@ -7,13 +7,17 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // 🔥 IMPORTANT
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
 });
 
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim()); // 🔥 VERY IMPORTANT
+});
+
 self.addEventListener('fetch', (event) => {
-  // Bypass Supabase and API calls to ensure realtime works
   if (event.request.url.includes('supabase.co') || event.request.url.includes('googleapis.com')) {
     return;
   }
