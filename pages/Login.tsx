@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { Lock, Mail, ArrowRight, Eye, EyeOff, Loader2, Code2, AlertCircle, ShieldAlert, Check } from 'lucide-react';
@@ -120,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
       <div className={`w-full max-w-[380px] transition-all duration-500 ${successMode ? 'opacity-0 translate-y-[-10px]' : 'opacity-100 translate-y-0'}`}>
         
         {/* Brand Identity */}
-        <div className="flex flex-col items-center mb-10 text-center">
+        <div className="flex flex-col items-center mb-10 text-center animate-fade-up">
           <div className="w-12 h-12 bg-slate-900 dark:bg-white rounded-[12px] flex items-center justify-center text-white dark:text-black mb-6 shadow-sm">
             {successMode ? (
               <Check size={24} strokeWidth={3} className="animate-fade" />
@@ -146,7 +145,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-4">
               {/* Email Input */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 animate-slide-left">
                 <div className="flex justify-between items-center px-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email Address</label>
                   {!isEmailValid && email !== '' && <span className="text-[9px] font-bold text-red-500 uppercase">Invalid Domain</span>}
@@ -170,7 +169,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
               </div>
 
               {/* Access Key Input */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 animate-slide-right">
                 <div className="flex justify-between items-center px-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">6-Digit Access Key</label>
                   {password.length > 0 && !isKeyComplete && <span className="text-[9px] font-bold text-slate-400 uppercase">{password.length}/6</span>}
@@ -213,30 +212,35 @@ const Login: React.FC<LoginProps> = ({ onLogin, users }) => {
             )}
 
             {/* Submit Action */}
-            <button
-              type="submit"
-              disabled={isSubmitDisabled}
-              className={`w-full py-3.5 rounded-[10px] text-white dark:text-black text-[13px] font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                isSubmitDisabled 
-                ? 'bg-slate-200 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600 cursor-not-allowed' 
-                : 'bg-slate-900 dark:bg-white hover:opacity-90 shadow-md'
-              }`}
-            >
-              {isLoading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : cooldown > 0 ? (
-                `Locked (${cooldown}s)`
-              ) : (
-                <>Sign In <ArrowRight size={16} strokeWidth={2.5} /></>
-              )}
-            </button>
+            <div className="space-y-3 animate-fade-up">
+              <button
+                type="submit"
+                disabled={isSubmitDisabled}
+                className={`w-full py-3.5 rounded-[10px] text-white dark:text-black text-[13px] font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                  isSubmitDisabled 
+                  ? 'bg-slate-200 dark:bg-zinc-800 text-slate-400 dark:text-zinc-600 cursor-not-allowed' 
+                  : 'bg-slate-900 dark:bg-white hover:opacity-90 shadow-md'
+                }`}
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : cooldown > 0 ? (
+                  `Locked (${cooldown}s)`
+                ) : (
+                  <>Sign In <ArrowRight size={16} strokeWidth={2.5} /></>
+                )}
+              </button>
+
+              <div className="text-center">
+                <a 
+                  href="mailto:chakradharchowdarygunnam@gmail.com?subject=My%20credentials%20missing%20-%20CodeNexus"
+                  className="text-[11px] font-bold text-blue-500 hover:underline transition-all"
+                >
+                  Having trouble signing in? Contact Administrator
+                </a>
+              </div>
+            </div>
           </form>
-          
-          <div className="text-center pt-2">
-            <p className="text-[11px] text-slate-400 font-medium">
-              Enterprise Access Node v2.4
-            </p>
-          </div>
         </div>
       </div>
     </div>

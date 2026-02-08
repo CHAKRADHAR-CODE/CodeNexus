@@ -1,20 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { User, UserRole, Topic, DailyChallengeSet, UserProgress, DailyProblem, RankTier } from '../types';
+import { User, UserRole, Topic, DailyChallengeSet, UserProgress, RankTier } from '../types';
 import Layout, { getLevelData } from '../components/Layout';
 import { getTopicIcon } from '../constants';
 import { Link } from 'react-router-dom';
 import { 
-  Search, 
-  Flame, 
-  Trophy, 
-  Sparkles, 
-  ArrowRight, 
-  CheckCircle2, 
-  Target,
-  Circle,
-  RefreshCw,
-  TrendingUp
+  Flame, Trophy, Sparkles, ArrowRight, CheckCircle2, 
+  Target, Circle, Search, Star
 } from 'lucide-react';
 
 interface StudentDashboardProps {
@@ -28,34 +20,20 @@ interface StudentDashboardProps {
   setDark: (dark: boolean) => void;
   onMarkAsSolved: (problemId: string, points: number) => void;
   onMarkAsAttempted: (problemId: string) => void;
-  isSyncing?: boolean;
-  isFastSyncing?: boolean;
   currentDateStr: string;
 }
 
-const getTierInfo = (points: number = 0) => {
-  if (points >= 5000) return { name: RankTier.ELITE, color: 'text-indigo-600 dark:text-indigo-400' };
-  if (points >= 3500) return { name: RankTier.DIAMOND, color: 'text-cyan-600 dark:text-cyan-400' };
-  if (points >= 2500) return { name: RankTier.PLATINUM, color: 'text-zinc-600 dark:text-zinc-400' };
-  if (points >= 1500) return { name: RankTier.GOLD, color: 'text-orange-600 dark:text-orange-400' };
-  return { name: RankTier.BRONZE, color: 'text-zinc-500' };
-};
-
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ 
-  user, users, topics, challenges, progress, onLogout, isDark, setDark, onMarkAsSolved, onMarkAsAttempted, isSyncing, isFastSyncing, currentDateStr
+  user, users, topics, challenges, progress, onLogout, isDark, setDark, onMarkAsSolved, onMarkAsAttempted, currentDateStr
 }) => {
   const [search, setSearch] = useState('');
   const todaysChallenge = challenges.find(c => c.date === currentDateStr);
   const levelData = useMemo(() => getLevelData(progress.points), [progress.points]);
 
-  const isDayCompleted = useMemo(() => {
-    return progress.lastChallengeDate === currentDateStr;
-  }, [progress.lastChallengeDate, currentDateStr]);
-
   const streakDots = useMemo(() => {
     const dots = [];
     const today = new Date(currentDateStr);
-    for (let i = 4; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const ds = d.toISOString().split('T')[0];
@@ -68,185 +46,162 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({
     return dots;
   }, [currentDateStr, progress.completedDates]);
 
-  // Filter topics based on search AND visibility
-  const filteredTopics = topics.filter(t => 
-    t.isVisible && t.title.toLowerCase().includes(search.toLowerCase())
-  );
-
-  const topPerformers = users
-    .filter(u => u.role === UserRole.STUDENT)
-    .sort((a, b) => (b.points || 0) - (a.points || 0))
-    .slice(0, 5);
-
-  const userRank = users
-    .filter(u => u.role === UserRole.STUDENT)
-    .sort((a, b) => (b.points || 0) - (a.points || 0))
-    .findIndex(u => u.id === user.id) + 1;
-
-  const tier = getTierInfo(progress.points);
+  const filteredTopics = topics.filter(t => t.isVisible && t.title.toLowerCase().includes(search.toLowerCase()));
+  const topPerformers = users.filter(u => u.role === UserRole.STUDENT).sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 5);
+  const userRank = users.filter(u => u.role === UserRole.STUDENT).sort((a, b) => (b.points || 0) - (a.points || 0)).findIndex(u => u.id === user.id) + 1;
 
   return (
     <Layout user={user} onLogout={onLogout} isDark={isDark} setDark={setDark} points={progress.points}>
-      <div className="space-y-8 animate-fade max-w-7xl mx-auto px-2">
+      <div className="max-w-7xl mx-auto space-y-10 animate-content px-4">
         
-        {/* Simplified Clean Banner */}
-        <section className="bg-white dark:bg-zinc-900 border border-border p-6 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${levelData.bg} ${levelData.color}`}>
-                LEVEL {levelData.level} • {levelData.badge}
-              </span>
-              {isSyncing && (
-                <span className="flex items-center gap-1.5 text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
-                  <RefreshCw size={10} className="animate-spin" /> Syncing
-                </span>
-              )}
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome, {user.name.split(' ')[0]}</h1>
-            <p className="text-[13px] text-zinc-500 font-medium">Ranked #{userRank} globally</p>
-          </div>
+        {/* Premium Welcome Banner - Light/Dark Synced */}
+        <section className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[32px] flex flex-col md:flex-row justify-between items-center gap-8 shadow-sm overflow-hidden relative group">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-zinc-50 dark:bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl opacity-40 group-hover:opacity-60 transition-opacity" />
+           
+           <div className="relative z-10 space-y-3">
+              <div className="flex items-center gap-3">
+                 <div className="px-3 py-1 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg text-[9px] font-black tracking-widest uppercase shadow-sm">
+                    LEVEL {levelData.level}
+                 </div>
+                 <span className="text-[12px] font-bold text-zinc-400">#{userRank} GLOBAL RANK</span>
+              </div>
+              <h1 className="text-3xl font-black tracking-tight leading-tight text-zinc-900 dark:text-white">Hello, {user.name.split(' ')[0]}</h1>
+              <p className="text-zinc-400 font-semibold text-[14px]">{levelData.badge}</p>
+           </div>
 
-          <div className="flex gap-10">
-            <div className="text-right">
-              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">Points</p>
-              <div className="text-xl font-bold flex items-center gap-2">
-                <Trophy className="text-zinc-400" size={16} /> {progress.points.toLocaleString()}
+           <div className="relative z-10 flex gap-10">
+              <div className="text-center">
+                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">SYNC POINTS</p>
+                 <div className="text-2xl font-black text-zinc-900 dark:text-white">{progress.points.toLocaleString()}</div>
               </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">Streak</p>
-              <div className="text-xl font-bold flex items-center gap-2">
-                <Flame className="text-orange-500" size={16} fill="currentColor" /> {progress.currentStreak}
+              <div className="text-center">
+                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">TOTAL STREAK</p>
+                 <div className="text-2xl font-black flex items-center gap-2.5 justify-center text-zinc-900 dark:text-white">
+                   <Flame className="text-orange-500 fill-orange-500" size={20} /> {progress.currentStreak}
+                 </div>
               </div>
-            </div>
-          </div>
+           </div>
         </section>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          <div className="flex-1 space-y-4">
+        <div className="flex flex-col lg:flex-row gap-10">
+          {/* Main Grid */}
+          <div className="flex-1 space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-[14px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                <Target size={14} /> Learning Tracks
+              <h2 className="text-[11px] font-black text-zinc-400 uppercase tracking-[0.2em] flex items-center gap-2.5">
+                <Target size={14} className="text-zinc-400" /> ENGINEERING TRACKS
               </h2>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={12} />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
                 <input
                   type="text"
-                  placeholder="Find tracks..."
+                  placeholder="Filter curriculum..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-white dark:bg-zinc-950 border border-border pl-8 pr-3 py-1.5 rounded-md text-[12px] w-48 focus:border-zinc-400 transition-colors outline-none"
+                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 pl-10 pr-4 py-2 rounded-2xl text-[12px] w-48 focus:border-zinc-400 dark:focus:border-zinc-500 transition-all outline-none font-medium"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {filteredTopics.map((topic) => (
                 <Link
                   key={topic.id}
                   to={`/topic/${topic.id}`}
-                  className="premium-card p-5 group"
+                  className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-7 rounded-[28px] group transition-all hover:border-zinc-400 dark:hover:border-zinc-600 shadow-sm flex flex-col justify-between"
                 >
-                  <div className="flex items-start gap-3 mb-6">
-                    <div className="w-8 h-8 bg-zinc-50 dark:bg-white/5 rounded flex items-center justify-center text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
+                  <div className="space-y-5">
+                    <div className="w-10 h-10 bg-zinc-50 dark:bg-white/5 rounded-xl flex items-center justify-center text-zinc-400 group-hover:bg-zinc-900 group-hover:text-white dark:group-hover:bg-white dark:group-hover:text-black transition-all">
                       {getTopicIcon(topic.icon)}
                     </div>
                     <div>
-                      <h3 className="text-[14px] font-bold tracking-tight">{topic.title}</h3>
-                      <p className="text-zinc-500 text-[11px] mt-0.5">{topic.description}</p>
+                      <h3 className="text-[15px] font-bold tracking-tight mb-1.5 text-zinc-900 dark:text-white">{topic.title}</h3>
+                      <p className="text-zinc-500 dark:text-zinc-400 text-[12px] font-medium leading-relaxed">{topic.description}</p>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{topic.modules.filter(m => m.isVisible).length} Units</span>
-                    <ArrowRight size={14} className="text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
+                  <div className="flex items-center justify-between pt-6 mt-6 border-t border-zinc-100 dark:border-zinc-800/50">
+                    <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">{topic.modules.filter(m => m.isVisible).length} EXPERT UNITS</span>
+                    <ArrowRight size={16} className="text-zinc-300 group-hover:translate-x-1 transition-all" />
                   </div>
                 </Link>
               ))}
-              {filteredTopics.length === 0 && (
-                 <div className="col-span-full py-20 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-zinc-400">
-                    <Target size={32} className="opacity-20 mb-3" />
-                    <p className="text-[13px] font-bold uppercase tracking-widest opacity-40">No tracks available yet</p>
-                 </div>
-              )}
             </div>
           </div>
 
-          <div className="w-full lg:w-[300px] shrink-0 space-y-6">
-            <div className="bg-white dark:bg-zinc-900 border border-border p-5 rounded-lg shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="text-zinc-400" size={14} />
-                <h3 className="text-[13px] font-bold tracking-tight">Daily Challenge</h3>
-                <span className="ml-auto text-[10px] font-medium text-zinc-400">{currentDateStr}</span>
-              </div>
-
-              <div className="flex items-center justify-between mb-5 px-0.5">
-                <div className="flex gap-2">
-                  {streakDots.map((dot) => (
-                    <div 
-                      key={dot.date} 
-                      className={`w-2 h-2 rounded-full ${
-                        dot.completed 
-                        ? 'bg-emerald-500' 
-                        : dot.isToday ? 'border border-zinc-300' : 'bg-zinc-100 dark:bg-zinc-800'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-zinc-50 dark:bg-white/5 rounded border border-border">
-                   <Flame size={10} className="text-orange-500" fill="currentColor" />
-                   <span className="text-[10px] font-bold">{progress.currentStreak}</span>
-                </div>
-              </div>
-
-              {isDayCompleted && (
-                 <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-500/20 rounded-md flex items-center gap-3">
-                    <CheckCircle2 size={14} className="text-emerald-500" />
-                    <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Goal Achieved</span>
-                 </div>
-              )}
+          {/* Sidebar */}
+          <div className="w-full lg:w-[340px] space-y-8">
+            {/* Today's Mission Card - Fixed UI (No more hardcoded black) */}
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-7 rounded-[28px] shadow-sm space-y-6 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity dark:text-white text-black"><Sparkles size={100} /></div>
               
-              <div className="space-y-1">
+              <div className="relative z-10 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Star size={15} className="text-amber-400 fill-amber-400" />
+                  <h3 className="text-[14px] font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">Today's Mission</h3>
+                </div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">DAY GOAL</span>
+              </div>
+
+              <div className="relative z-10 flex justify-center gap-2.5">
+                {streakDots.map((dot, idx) => (
+                  <div 
+                    key={idx}
+                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                      dot.completed ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 
+                      dot.isToday ? 'border border-zinc-300 dark:border-zinc-700 animate-pulse' : 'bg-zinc-100 dark:bg-zinc-800'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <div className="relative z-10 space-y-2.5">
                 {todaysChallenge?.problems.map((p) => {
                   const isSolved = progress.completedDailyProblemIds.includes(p.id);
                   return (
                     <div 
                       key={p.id}
-                      onClick={() => { onMarkAsAttempted(p.id); window.open(p.externalLink, '_blank'); }}
-                      className="group flex items-center justify-between p-2 rounded-md hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer transition-colors"
+                      onClick={() => window.open(p.externalLink, '_blank')}
+                      className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                        isSolved ? 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/20' : 'bg-zinc-50 dark:bg-white/5 border-zinc-100 dark:border-white/5 hover:bg-zinc-100 dark:hover:bg-white/10'
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        {isSolved ? <CheckCircle2 size={14} className="text-emerald-500" /> : <Circle size={14} className="text-zinc-300" />}
-                        <span className={`text-[12px] font-medium ${isSolved ? 'text-zinc-400 line-through' : 'text-zinc-700 dark:text-zinc-300'}`}>{p.title}</span>
+                      <div className="flex items-center gap-3.5">
+                        {isSolved ? <CheckCircle2 size={16} className="text-emerald-500" /> : <Circle size={16} className="text-zinc-300 dark:text-zinc-700" />}
+                        <div>
+                          <p className={`text-[12px] font-bold ${isSolved ? 'text-emerald-600 dark:text-emerald-400 line-through' : 'text-zinc-900 dark:text-zinc-200'}`}>{p.title}</p>
+                          <span className={`text-[8px] font-black uppercase tracking-widest ${
+                            p.difficulty === 'EASY' ? 'text-emerald-500' : p.difficulty === 'MEDIUM' ? 'text-amber-500' : 'text-rose-500'
+                          }`}>{p.difficulty}</span>
+                        </div>
                       </div>
-                      <span className="text-[9px] font-bold text-zinc-400">{p.points} XP</span>
+                      <span className="text-[10px] font-black text-zinc-300 dark:text-zinc-600">{p.points} XP</span>
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <div className="bg-white dark:bg-zinc-900 border border-border p-5 rounded-lg shadow-sm">
-              <h3 className="text-[12px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                <TrendingUp size={14} /> Standings
+            {/* Standings Sidebar */}
+            <div className="space-y-5">
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] flex items-center gap-2.5">
+                 STANDINGS
               </h3>
-              
-              <div className="space-y-3">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[28px] p-5 shadow-sm space-y-3">
                 {topPerformers.map((u, idx) => (
-                  <div key={u.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-zinc-300 w-3">{idx + 1}</span>
-                      <span className={`text-[12px] font-semibold ${u.id === user.id ? 'text-zinc-900 dark:text-white' : 'text-zinc-500'}`}>
-                        {u.name.split(' ')[0]}
+                  <div key={u.id} className="flex items-center justify-between group py-1">
+                    <div className="flex items-center gap-3.5">
+                      <span className="text-[11px] font-black text-zinc-300 dark:text-zinc-700 w-4">{idx + 1}</span>
+                      <div className="w-8 h-8 rounded-lg bg-zinc-50 dark:bg-white/5 flex items-center justify-center font-bold text-[11px] text-zinc-400 border border-zinc-100 dark:border-zinc-800">{u.name[0]}</div>
+                      <span className={`text-[12px] font-bold ${u.id === user.id ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                        {u.name}
                       </span>
                     </div>
-                    <span className="text-[11px] font-bold text-zinc-400">{u.points}</span>
+                    <span className="text-[11px] font-black text-zinc-400">{u.points}</span>
                   </div>
                 ))}
+                <Link to="/ranking" className="block text-center pt-4 border-t border-zinc-100 dark:border-zinc-800/50 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all">
+                   FULL LEADERBOARD
+                </Link>
               </div>
-              
-              <Link to="/ranking" className="mt-5 block text-center py-2 border border-border text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
-                View All
-              </Link>
             </div>
           </div>
         </div>

@@ -142,10 +142,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, isDark, setDa
       <footer className="py-6 border-t border-border mt-auto">
         <div className="max-w-7xl mx-auto px-4 text-zinc-400 text-[11px] font-medium flex justify-between">
           <p>© 2025 CodeNexus</p>
-          <div className="flex gap-4">
-            <span>Status: Active</span>
-            <span>API: 2.4</span>
-          </div>
+          <a 
+            href="https://chakradhar-portfolio-beta.vercel.app" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors uppercase tracking-widest"
+          >
+            BY CHAKRADHAR
+          </a>
         </div>
       </footer>
     </div>

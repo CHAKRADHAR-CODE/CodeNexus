@@ -1,33 +1,28 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { User, UserRole, Topic, DailyChallengeSet, UserProgress, UserUnitProgress } from './types';
+import { User, UserRole, Topic, DailyChallengeSet, UserProgress } from './types';
 import { INITIAL_TOPICS, INITIAL_CHALLENGES } from './constants';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import TopicPage from './pages/TopicPage';
 import RankingPage from './pages/RankingPage';
-import { ProgressSyncService } from './services/syncEngine';
-import { SupabaseService } from './services/supabase';
-import { Zap, Check, Award, Cloud, AlertCircle } from 'lucide-react';
+import { SupabaseService, supabase } from './services/supabase';
+import { Code2, Check } from 'lucide-react';
 
-const FAST_SYNC_INTERVAL = 15000;
-const NORMAL_SYNC_INTERVAL = 300000;
 const DAILY_COMPLETION_BONUS_XP = 100;
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+  const [showSplash, setShowSplash] = useState(true);
 
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('cm_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  const isAdmin = user?.role === UserRole.ADMIN;
-  
   const [topics, setTopics] = useState<Topic[]>([]);
   const [challenges, setChallenges] = useState<DailyChallengeSet[]>([]);
   const [progress, setProgress] = useState<UserProgress>({
@@ -39,107 +34,135 @@ const App: React.FC = () => {
     attemptedProblemIds: [],
     points: 0,
     currentStreak: 0,
-    lastChallengeDate: '',
     completedDates: []
   });
 
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('cm_theme') === 'dark');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
-  const [currentDateStr, setCurrentDateStr] = useState(new Date().toISOString().split('T')[0]);
   const [xpNotification, setXpNotification] = useState<{points: number, id: number} | null>(null);
-  const [isLevelUp, setIsLevelUp] = useState(false);
-  const syncTimeoutRef = useRef<number | null>(null);
 
-  // --- INITIAL DATA LOAD FROM SUPABASE ---
-  useEffect(() => {
-    const initApp = async () => {
-      setIsLoading(true);
-      try {
-        const [cloudUsers, cloudTopics, cloudChallenges] = await Promise.all([
-          SupabaseService.fetchUsers(),
-          SupabaseService.fetchTopics(),
-          SupabaseService.fetchChallenges()
-        ]);
+  const initApp = useCallback(async (isInitial = false) => {
+    try {
+      const [cloudUsers, cloudTopics, cloudChallenges] = await Promise.all([
+        SupabaseService.fetchUsers(),
+        SupabaseService.fetchTopics(),
+        SupabaseService.fetchChallenges()
+      ]);
 
-        setUsers(cloudUsers);
-        setTopics(cloudTopics.length > 0 ? cloudTopics : INITIAL_TOPICS);
-        setChallenges(cloudChallenges.length > 0 ? cloudChallenges : INITIAL_CHALLENGES);
+      setUsers(cloudUsers);
+      setTopics(cloudTopics.length > 0 ? cloudTopics : INITIAL_TOPICS);
+      setChallenges(cloudChallenges.length > 0 ? cloudChallenges : INITIAL_CHALLENGES);
 
-        // Load progress if logged in student
-        if (user && user.role === UserRole.STUDENT) {
-          const cloudProgress = await SupabaseService.fetchUserProgress(user.id);
-          if (cloudProgress) {
-            setProgress(cloudProgress);
-          }
-        }
-      } catch (err) {
-        console.error("Critical Cloud Load Failure:", err);
-        setSyncStatus('error');
-      } finally {
-        setIsLoading(false);
+      if (user && user.role === UserRole.STUDENT) {
+        const cloudProgress = await SupabaseService.fetchUserProgress(user.id);
+        if (cloudProgress) setProgress(cloudProgress);
       }
+    } catch (err) {
+      console.error("Cloud Error:", err);
+    } finally {
+      if (isInitial) {
+        setTimeout(() => {
+          setIsLoading(false);
+          setTimeout(() => setShowSplash(false), 1000);
+        }, 800);
+      }
+    }
+  }, [user?.id, user?.role]);
+
+  // Initial Load
+  useEffect(() => {
+    initApp(true);
+  }, [initApp]);
+
+  // --- REALTIME SYNC ENGINE ---
+  useEffect(() => {
+    const tables = ['tracks', 'modules', 'videos', 'pdfs', 'coding_questions', 'cn_challenges', 'cn_users'];
+    
+    const channel = supabase.channel('curriculum-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        console.debug('[Realtime] Syncing change from table:', payload.table);
+        // Instant refresh on any curriculum or user change
+        initApp(); 
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
-    initApp();
-  }, [user?.id]);
+  }, [initApp]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     localStorage.setItem('cm_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  // --- PERSIST PROGRESS TO SUPABASE ON CHANGE ---
   useEffect(() => {
     if (user && user.role === UserRole.STUDENT && !isLoading) {
       SupabaseService.saveUserProgress(progress);
-      // Sync points back to main profile
-      SupabaseService.updateUserProfile({
-        ...user,
-        points: progress.points,
-        streak: progress.currentStreak
-      });
     }
   }, [progress, user, isLoading]);
 
   const showXpToast = (points: number) => {
     setXpNotification({ points, id: Date.now() });
-    setTimeout(() => setXpNotification(null), 2000);
+    setTimeout(() => setXpNotification(null), 2500);
+  };
+
+  const handleUpdateUnitProgress = (moduleId: string, blockId: string) => {
+    setProgress(prev => {
+      const currentModProgress = prev.unitProgress[moduleId] || { moduleId, completedBlockIds: [], moduleCompleted: false, unlocked: true };
+      if (currentModProgress.completedBlockIds.includes(blockId)) return prev;
+
+      const newBlockIds = [...currentModProgress.completedBlockIds, blockId];
+      const mod = topics.flatMap(t => t.modules).find(m => m.id === moduleId);
+      const isNowComplete = mod ? mod.contentBlocks.filter(b => b.isVisible).every(b => newBlockIds.includes(b.id)) : false;
+
+      const newUnitProgress = {
+        ...prev.unitProgress,
+        [moduleId]: { ...currentModProgress, completedBlockIds: newBlockIds, moduleCompleted: isNowComplete }
+      };
+
+      const newCompletedModules = isNowComplete ? [...prev.completedModuleIds, moduleId] : prev.completedModuleIds;
+      showXpToast(25);
+
+      return {
+        ...prev,
+        unitProgress: newUnitProgress,
+        completedModuleIds: newCompletedModules,
+        points: prev.points + 25
+      };
+    });
   };
 
   const handleMarkAsSolved = (problemId: string, points: number) => {
+    const today = new Date().toISOString().split('T')[0];
     setProgress(prev => {
       if (prev.completedDailyProblemIds.includes(problemId)) return prev;
-      const today = new Date().toISOString().split('T')[0];
-      const updatedSolvedIds = [...prev.completedDailyProblemIds, problemId];
       
       let newPoints = prev.points + points;
       let newStreak = prev.currentStreak;
-      let newLastChallengeDate = prev.lastChallengeDate;
       let newCompletedDates = [...prev.completedDates];
 
       showXpToast(points);
 
       const todaysChallengeSet = challenges.find(c => c.date === today);
-      if (todaysChallengeSet && todaysChallengeSet.problems.length > 0) {
-        const allDailySolved = todaysChallengeSet.problems.every(p => 
-          p.id === problemId || prev.completedDailyProblemIds.includes(p.id)
+      if (todaysChallengeSet) {
+        const alreadySolved = prev.completedDailyProblemIds.filter(id => 
+          todaysChallengeSet.problems.some(p => p.id === id)
         );
+        const isLastOne = (alreadySolved.length + 1) === todaysChallengeSet.problems.length;
 
-        if (allDailySolved && prev.lastChallengeDate !== today) {
-          newStreak = prev.currentStreak + 1;
+        if (isLastOne && !prev.completedDates.includes(today)) {
+          newStreak += 1;
           newPoints += DAILY_COMPLETION_BONUS_XP;
-          newLastChallengeDate = today;
-          if (!newCompletedDates.includes(today)) newCompletedDates.push(today);
+          newCompletedDates.push(today);
           showXpToast(DAILY_COMPLETION_BONUS_XP);
         }
       }
 
       return {
         ...prev,
-        completedDailyProblemIds: updatedSolvedIds,
+        completedDailyProblemIds: [...prev.completedDailyProblemIds, problemId],
         points: newPoints,
         currentStreak: newStreak,
-        lastChallengeDate: newLastChallengeDate,
         completedDates: newCompletedDates
       };
     });
@@ -148,31 +171,29 @@ const App: React.FC = () => {
   const handleLogout = () => { setUser(null); localStorage.removeItem('cm_user'); };
   const handleLogin = (u: User) => { setUser(u); localStorage.setItem('cm_user', JSON.stringify(u)); };
 
-  if (isLoading) {
+  if (showSplash) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-app space-y-4">
-        <div className="w-12 h-12 border-4 border-zinc-900 border-t-transparent dark:border-white rounded-full animate-spin" />
-        <p className="text-[12px] font-bold uppercase tracking-widest text-zinc-400">Syncing with CodeNexus Cloud...</p>
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white dark:bg-black">
+        <div className="splash-text flex flex-col items-center">
+          <div className="w-16 h-16 bg-black dark:bg-white rounded-2xl flex items-center justify-center text-white dark:text-black mb-6">
+            <Code2 size={32} />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight">CodeNexus</h1>
+          <p className="text-zinc-400 text-sm mt-2">Welcome to CodeNexus</p>
+        </div>
       </div>
     );
   }
 
   return (
     <HashRouter>
-      <div className="fixed bottom-4 left-4 z-[200]">
-        <div className={`px-4 py-2 rounded-full border bg-white dark:bg-zinc-900 shadow-lg flex items-center gap-2 transition-all ${syncStatus === 'error' ? 'border-red-500' : 'border-border'}`}>
-          {syncStatus === 'syncing' ? <Cloud className="animate-pulse text-zinc-400" size={14} /> : <Cloud className="text-emerald-500" size={14} />}
-          <span className="text-[10px] font-black uppercase tracking-tighter">
-            {syncStatus === 'error' ? 'Sync Error' : 'Cloud Link Active'}
-          </span>
-        </div>
-      </div>
-
-      <div className="fixed top-20 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-20 right-6 z-[200] flex flex-col gap-2 pointer-events-none">
         {xpNotification && (
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-fade">
-            <Check size={14} className="text-emerald-500" strokeWidth={3} />
-            <span className="text-[13px] font-bold text-zinc-900 dark:text-zinc-100">+{xpNotification.points} XP Earned</span>
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade">
+            <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center">
+               <Check size={12} className="text-emerald-500" strokeWidth={3} />
+            </div>
+            <span className="text-[13px] font-bold">+{xpNotification.points} XP Earned</span>
           </div>
         )}
       </div>
@@ -184,27 +205,20 @@ const App: React.FC = () => {
             user.role === UserRole.ADMIN ? 
             <AdminDashboard 
               user={user} users={users} setUsers={setUsers}
-              topics={topics} setTopics={(t) => { 
-                setTopics(t); 
-                t.forEach(topic => SupabaseService.saveTopic(topic));
-              }} 
-              challenges={challenges} setChallenges={(c) => {
-                setChallenges(c);
-                c.forEach(ch => SupabaseService.saveChallenge(ch));
-              }}
+              topics={topics} setTopics={setTopics}
+              challenges={challenges} setChallenges={setChallenges}
               onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} 
             /> : 
             <StudentDashboard 
               user={user} users={users} topics={topics} challenges={challenges} progress={progress}
               onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode}
-              onMarkAsSolved={handleMarkAsSolved} onMarkAsAttempted={(id) => setLastAttemptTime(Date.now())}
-              isSyncing={isSyncing} isFastSyncing={false}
-              currentDateStr={currentDateStr}
+              onMarkAsSolved={handleMarkAsSolved} onMarkAsAttempted={() => {}}
+              currentDateStr={new Date().toISOString().split('T')[0]}
             />
           ) : <Navigate to="/login" />
         } />
         <Route path="/ranking" element={user ? <RankingPage user={user} users={users} onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} /> : <Navigate to="/login" />} />
-        <Route path="/topic/:id" element={user ? <TopicPage topics={topics} isDark={isDarkMode} onLogout={handleLogout} user={user} setDark={setIsDarkMode} progress={progress} onUpdateUnitProgress={() => {}} onMarkAsSolved={handleMarkAsSolved} onMarkAsAttempted={(id) => setLastAttemptTime(Date.now())} /> : <Navigate to="/login" />} />
+        <Route path="/topic/:id" element={user ? <TopicPage topics={topics} isDark={isDarkMode} onLogout={handleLogout} user={user} setDark={setIsDarkMode} progress={progress} onUpdateUnitProgress={handleUpdateUnitProgress} onMarkAsSolved={handleMarkAsSolved} /> : <Navigate to="/login" />} />
       </Routes>
     </HashRouter>
   );

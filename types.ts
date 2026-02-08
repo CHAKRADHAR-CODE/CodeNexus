@@ -21,7 +21,7 @@ export enum RankTier {
 export interface User {
   id: string;
   email: string;
-  password?: string; // Visible for admin verification and dashboard
+  password?: string;
   role: UserRole;
   name: string;
   leetcodeUsername?: string;
@@ -42,13 +42,22 @@ export interface DailyProblem {
   topic?: string;
 }
 
+export type BlockType = 'VIDEO' | 'PDF' | 'PROBLEM';
+
+export interface ContentBlock {
+  id: string;
+  type: BlockType;
+  title: string;
+  url?: string;
+  problem?: DailyProblem;
+  isVisible: boolean;
+}
+
 export interface Module {
   id: string;
   title: string;
   description: string;
-  videoUrl?: string;
-  pdfUrl?: string;
-  problems: DailyProblem[];
+  contentBlocks: ContentBlock[];
   isVisible?: boolean;
 }
 
@@ -70,11 +79,8 @@ export interface DailyChallengeSet {
 
 export interface UserUnitProgress {
   moduleId: string;
-  videoCompleted: boolean;
-  pdfCompleted: boolean;
-  codingCompleted: boolean;
+  completedBlockIds: string[];
   unlocked: boolean;
-  progressPercent: number;
   moduleCompleted: boolean;
 }
 
@@ -88,5 +94,5 @@ export interface UserProgress {
   points: number;
   currentStreak: number;
   lastChallengeDate?: string;
-  completedDates: [] | string[]; 
+  completedDates: string[]; 
 }

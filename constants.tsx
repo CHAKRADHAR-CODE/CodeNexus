@@ -6,9 +6,7 @@ import {
   Database, 
   Binary, 
   Terminal, 
-  Globe, 
-  BrainCircuit, 
-  Coffee 
+  Globe 
 } from 'lucide-react';
 
 export const INITIAL_TOPICS: Topic[] = [
@@ -23,41 +21,41 @@ export const INITIAL_TOPICS: Topic[] = [
         id: 'mod-1',
         title: 'Complexity Analysis (Big O)',
         description: 'Understand time and space complexity in depth.',
-        videoUrl: 'https://www.youtube.com/embed/v4cd1O4zkGw',
-        pdfUrl: 'https://www.adobe.com/support/products/enterprise/knowledgecenter/whitepapers/pdf/aem_6_0_architecture.pdf',
         isVisible: true,
-        problems: [
-          { 
-            id: 'q1', 
-            title: 'Two Sum', 
-            difficulty: 'EASY', 
-            description: 'Find two indices such that their values add up to target.',
-            points: 10,
-            platform: PlatformType.LEETCODE,
-            externalLink: 'https://leetcode.com/problems/two-sum/'
-          }
-        ]
-      },
-      {
-        id: 'mod-2',
-        title: 'Arrays & Hashing',
-        description: 'Common patterns and techniques for array manipulation.',
-        videoUrl: 'https://www.youtube.com/embed/86N_I1E4k_4',
-        isVisible: true,
-        problems: [
+        contentBlocks: [
           {
-            id: 'dp1',
-            title: 'Contains Duplicate',
-            description: 'Check if array contains any duplicates.',
-            difficulty: 'EASY',
-            points: 10,
-            platform: PlatformType.LEETCODE,
-            externalLink: 'https://leetcode.com/problems/contains-duplicate/'
+            id: 'b1',
+            type: 'VIDEO',
+            title: 'Big O Explained',
+            url: 'https://www.youtube.com/embed/v4cd1O4zkGw',
+            isVisible: true
+          },
+          {
+            id: 'b2',
+            type: 'PDF',
+            title: 'Cheat Sheet',
+            url: 'https://www.adobe.com/support/products/enterprise/knowledgecenter/whitepapers/pdf/aem_6_0_architecture.pdf',
+            isVisible: true
+          },
+          {
+            id: 'b3',
+            type: 'PROBLEM',
+            title: 'Two Sum',
+            isVisible: true,
+            problem: { 
+              id: 'q1', 
+              title: 'Two Sum', 
+              difficulty: 'EASY', 
+              description: 'Find two indices such that their values add up to target.',
+              points: 10,
+              platform: PlatformType.LEETCODE,
+              externalLink: 'https://leetcode.com/problems/two-sum/'
+            }
           }
         ]
       }
     ],
-    interviewQuestions: ['Explain Time Complexity', 'What is a Hash Map?']
+    interviewQuestions: ['Explain Time Complexity']
   }
 ];
 
@@ -82,8 +80,8 @@ export const INITIAL_CHALLENGES: DailyChallengeSet[] = [
 ];
 
 export const MOCK_USERS: User[] = [
-  { id: '1', email: 'admin@gmail.com', role: UserRole.ADMIN, name: 'System Admin' },
-  { id: '2', email: 'user@gmail.com', role: UserRole.STUDENT, name: 'Alex Learner', leetcodeUsername: 'user123', points: 2450, streak: 8 }
+  { id: '1', email: 'admin@gmail.com', role: UserRole.ADMIN, name: 'System Admin', password: '111111' },
+  { id: '2', email: 'user@gmail.com', role: UserRole.STUDENT, name: 'Alex Learner', leetcodeUsername: 'user123', points: 2450, streak: 8, password: '111111' }
 ];
 
 export const getTopicIcon = (name: string) => {
