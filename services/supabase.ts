@@ -2,12 +2,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.48.1';
 import { User, Topic, DailyChallengeSet, UserProgress, Module, DailyProblem, UserUnitProgress, ContentBlock, PlatformType } from '../types';
 
-// Connection details provided by the user
-// Using environment variables primarily, falling back to provided project credentials
-const supabaseUrl = process.env.SUPABASE_URL || 'https://xfljvsdzjbvssnphcehc.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_lPKfuuBmb6GP58-FY3GoHQ_zM4VHDed';
+// Verified credentials for CodeNexusStorage (Project: zobrpjkimjkkwslqpbng)
+const supabaseUrl = 'https://zobrpjkimjkkwslqpbng.supabase.co';
+const supabaseKey = 'sb_publishable_K_oLhze28XNOHbwR95i--w_qESd02tH';
 
-// Initialize the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const SupabaseService = {
@@ -19,11 +17,8 @@ export const SupabaseService = {
         .select('*')
         .order('points', { ascending: false });
       
-      if (error) {
-        console.error("Error fetching users:", error);
-        return [];
-      }
-      return data.map(u => ({
+      if (error) throw error;
+      return (data || []).map(u => ({
         id: u.id,
         email: u.email,
         password: u.password,
@@ -34,14 +29,14 @@ export const SupabaseService = {
         isBlocked: u.is_blocked
       }));
     } catch (e) {
-      console.error("Supabase connection error:", e);
+      console.error("Supabase: fetchUsers failed", e);
       return [];
     }
   },
 
   async updateUserProfile(user: User) {
     try {
-      await supabase.from('cn_users').upsert({
+      const { error } = await supabase.from('cn_users').upsert({
         id: user.id,
         email: user.email,
         password: user.password,
@@ -51,23 +46,23 @@ export const SupabaseService = {
         streak: user.streak || 0,
         is_blocked: user.isBlocked || false
       });
+      if (error) throw error;
     } catch (e) {
-      console.error("Error updating user profile:", e);
+      console.error("Supabase: updateUserProfile failed", e);
     }
   },
 
-  // --- NORMALIZED CURRICULUM FETCHING ---
+  // --- CURRICULUM SYNC ---
   async fetchTopics(): Promise<Topic[]> {
     try {
-      // 1. Fetch Tracks (Primary Table)
       const { data: tracks, error: tErr } = await supabase
         .from('tracks')
         .select('*')
         .order('order_index', { ascending: true });
       
-      if (tErr || !tracks) return [];
+      if (tErr) throw tErr;
+      if (!tracks) return [];
 
-      // 2. Fetch Modules, Videos, PDFs, and Coding Questions in parallel
       const [
         { data: modules },
         { data: videos },
@@ -80,7 +75,6 @@ export const SupabaseService = {
         supabase.from('coding_questions').select('*').order('order_index', { ascending: true })
       ]);
 
-      // 3. Assemble the normalized tree structure
       return tracks.map(track => {
         const trackModules = (modules || []).filter(m => m.track_id === track.id);
         
@@ -139,14 +133,13 @@ export const SupabaseService = {
         };
       });
     } catch (e) {
-      console.error("Supabase fetch topics error:", e);
+      console.error("Supabase: fetchTopics failed", e);
       return [];
     }
   },
 
   async saveTopic(topic: Topic) {
     try {
-      // 1. Save Track
       await supabase.from('tracks').upsert({
         id: topic.id,
         title: topic.title,
@@ -155,7 +148,6 @@ export const SupabaseService = {
         order_index: 0
       });
 
-      // 2. Save Modules and their nested content
       for (const mod of topic.modules) {
         await supabase.from('modules').upsert({
           id: mod.id,
@@ -166,31 +158,13 @@ export const SupabaseService = {
           order_index: 0
         });
 
-        const videoBlocks = mod.contentBlocks.filter(b => b.type === 'VIDEO');
-        const pdfBlocks = mod.contentBlocks.filter(b => b.type === 'PDF');
-        const problemBlocks = mod.contentBlocks.filter(b => b.type === 'PROBLEM');
-
-        for (const v of videoBlocks) {
-          await supabase.from('videos').upsert({
-            id: v.id.replace('v-', ''),
-            module_id: mod.id,
-            youtube_url: v.url,
-            title: v.title
-          });
-        }
-
-        for (const p of pdfBlocks) {
-          await supabase.from('pdfs').upsert({
-            id: p.id.replace('f-', ''),
-            module_id: mod.id,
-            pdf_url: p.url,
-            title: p.title
-          });
-        }
-
-        for (const b of problemBlocks) {
-          if (b.problem) {
-            await supabase.from('coding_questions').upsert({
+        for (const b of mod.contentBlocks) {
+          if (b.type === 'VIDEO') {
+             await supabase.from('videos').upsert({ id: b.id.replace('v-', ''), module_id: mod.id, youtube_url: b.url, title: b.title });
+          } else if (b.type === 'PDF') {
+             await supabase.from('pdfs').upsert({ id: b.id.replace('f-', ''), module_id: mod.id, pdf_url: b.url, title: b.title });
+          } else if (b.type === 'PROBLEM' && b.problem) {
+             await supabase.from('coding_questions').upsert({
               id: b.problem.id,
               module_id: mod.id,
               title: b.problem.title,
@@ -204,37 +178,35 @@ export const SupabaseService = {
         }
       }
     } catch (e) {
-      console.error("Error saving topic:", e);
+      console.error("Supabase: saveTopic failed", e);
     }
   },
 
-  // --- DAILY CHALLENGES ---
+  // --- DAILY MISSIONS ---
   async fetchChallenges(): Promise<DailyChallengeSet[]> {
     try {
       const { data, error } = await supabase
         .from('cn_challenges')
-        .select(`*, cn_challenge_problems (cn_problems (*))`);
+        .select(`*, cn_challenge_problems (coding_questions (*))`);
       
-      if (error) {
-        console.error("Error fetching challenges:", error);
-        return [];
-      }
-      return data.map(c => ({
+      if (error) throw error;
+      return (data || []).map(c => ({
         id: c.id,
         date: c.date,
         problems: (c.cn_challenge_problems || [])
-          .filter((cp: any) => cp.cn_problems)
+          .filter((cp: any) => cp.coding_questions)
           .map((cp: any) => ({
-            id: cp.cn_problems.id,
-            title: cp.cn_problems.title,
-            description: cp.cn_problems.description,
-            difficulty: cp.cn_problems.difficulty,
-            points: cp.cn_problems.points,
-            platform: cp.cn_problems.platform,
-            externalLink: cp.cn_problems.external_link
+            id: cp.coding_questions.id,
+            title: cp.coding_questions.title,
+            description: cp.coding_questions.description,
+            difficulty: cp.coding_questions.difficulty,
+            points: cp.coding_questions.points,
+            platform: cp.coding_questions.platform,
+            externalLink: cp.coding_questions.external_link
           }))
       }));
     } catch (e) {
+      console.error("Supabase: fetchChallenges failed", e);
       return [];
     }
   },
@@ -259,11 +231,11 @@ export const SupabaseService = {
         await supabase.from('cn_challenge_problems').insert({ challenge_id: challenge.id, problem_id: prob.id });
       }
     } catch (e) {
-      console.error("Error saving challenge:", e);
+      console.error("Supabase: saveChallenge failed", e);
     }
   },
 
-  // --- PROGRESS TRACKING ---
+  // --- PROGRESS ---
   async fetchUserProgress(userId: string): Promise<UserProgress | null> {
     try {
       const [solvedData, progData, userData] = await Promise.all([
@@ -296,13 +268,15 @@ export const SupabaseService = {
         completedDates: []
       };
     } catch (e) {
-      console.error("Error fetching user progress:", e);
+      console.error("Supabase: fetchUserProgress failed", e);
       return null;
     }
   },
 
   async saveUserProgress(progress: UserProgress) {
     try {
+      // Points and Streaks are now handled by Postgres Triggers!
+      // We only need to insert the solved log and module flags
       for (const pid of progress.completedDailyProblemIds) {
         await supabase.from('cn_user_solved_problems').upsert({ user_id: progress.userId, problem_id: pid });
       }
@@ -317,12 +291,8 @@ export const SupabaseService = {
           question_completed: p.moduleCompleted
         });
       }
-
-      await supabase.from('cn_users')
-        .update({ points: progress.points, streak: progress.currentStreak })
-        .eq('id', progress.userId);
     } catch (e) {
-      console.error("Error saving user progress:", e);
+      console.error("Supabase: saveUserProgress failed", e);
     }
   }
 };
