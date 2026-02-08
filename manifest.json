@@ -9,13 +9,13 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/CHAKRADHAR-CODE/CodeNexus/main/icon-192.png",
+      "src": "https://raw.githubusercontent.com/CHAKRADHAR-CODE/CodeNexus/main/favicon.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://raw.githubusercontent.com/CHAKRADHAR-CODE/CodeNexus/main/icon-512.png",
+      "src": "https://raw.githubusercontent.com/CHAKRADHAR-CODE/CodeNexus/main/favicon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
