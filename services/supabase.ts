@@ -2,25 +2,27 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@^2.48.1';
 import { User, Topic, DailyChallengeSet, UserProgress, Module, DailyProblem, UserUnitProgress, ContentBlock, PlatformType } from '../types';
 
-// Use environment variables or placeholders to prevent crash during initialization
-const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder-url.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+// Connection details provided by the user
+// Using environment variables primarily, falling back to provided project credentials
+const supabaseUrl = process.env.SUPABASE_URL || 'https://xfljvsdzjbvssnphcehc.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_lPKfuuBmb6GP58-FY3GoHQ_zM4VHDed';
 
-// Initialize the client. If placeholders are used, requests will fail gracefully with 404/401 
-// instead of crashing the entire application on load.
+// Initialize the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const SupabaseService = {
   // --- USER AUTH & MANAGEMENT ---
   async fetchUsers(): Promise<User[]> {
     try {
-      if (supabaseUrl.includes('placeholder')) return [];
       const { data, error } = await supabase
         .from('cn_users')
         .select('*')
         .order('points', { ascending: false });
       
-      if (error) return [];
+      if (error) {
+        console.error("Error fetching users:", error);
+        return [];
+      }
       return data.map(u => ({
         id: u.id,
         email: u.email,
@@ -38,23 +40,25 @@ export const SupabaseService = {
   },
 
   async updateUserProfile(user: User) {
-    if (supabaseUrl.includes('placeholder')) return;
-    await supabase.from('cn_users').upsert({
-      id: user.id,
-      email: user.email,
-      password: user.password,
-      name: user.name,
-      role: user.role,
-      points: user.points || 0,
-      streak: user.streak || 0,
-      is_blocked: user.isBlocked || false
-    });
+    try {
+      await supabase.from('cn_users').upsert({
+        id: user.id,
+        email: user.email,
+        password: user.password,
+        name: user.name,
+        role: user.role,
+        points: user.points || 0,
+        streak: user.streak || 0,
+        is_blocked: user.isBlocked || false
+      });
+    } catch (e) {
+      console.error("Error updating user profile:", e);
+    }
   },
 
   // --- NORMALIZED CURRICULUM FETCHING ---
   async fetchTopics(): Promise<Topic[]> {
     try {
-      if (supabaseUrl.includes('placeholder')) return [];
       // 1. Fetch Tracks (Primary Table)
       const { data: tracks, error: tErr } = await supabase
         .from('tracks')
@@ -141,75 +145,80 @@ export const SupabaseService = {
   },
 
   async saveTopic(topic: Topic) {
-    if (supabaseUrl.includes('placeholder')) return;
-    // 1. Save Track
-    await supabase.from('tracks').upsert({
-      id: topic.id,
-      title: topic.title,
-      description: topic.description,
-      icon: topic.icon,
-      order_index: 0
-    });
-
-    // 2. Save Modules and their nested content
-    for (const mod of topic.modules) {
-      await supabase.from('modules').upsert({
-        id: mod.id,
-        track_id: topic.id,
-        title: mod.title,
-        description: mod.description,
-        visible: mod.isVisible ?? true,
+    try {
+      // 1. Save Track
+      await supabase.from('tracks').upsert({
+        id: topic.id,
+        title: topic.title,
+        description: topic.description,
+        icon: topic.icon,
         order_index: 0
       });
 
-      const videoBlocks = mod.contentBlocks.filter(b => b.type === 'VIDEO');
-      const pdfBlocks = mod.contentBlocks.filter(b => b.type === 'PDF');
-      const problemBlocks = mod.contentBlocks.filter(b => b.type === 'PROBLEM');
-
-      for (const v of videoBlocks) {
-        await supabase.from('videos').upsert({
-          id: v.id.replace('v-', ''),
-          module_id: mod.id,
-          youtube_url: v.url,
-          title: v.title
+      // 2. Save Modules and their nested content
+      for (const mod of topic.modules) {
+        await supabase.from('modules').upsert({
+          id: mod.id,
+          track_id: topic.id,
+          title: mod.title,
+          description: mod.description,
+          visible: mod.isVisible ?? true,
+          order_index: 0
         });
-      }
 
-      for (const p of pdfBlocks) {
-        await supabase.from('pdfs').upsert({
-          id: p.id.replace('f-', ''),
-          module_id: mod.id,
-          pdf_url: p.url,
-          title: p.title
-        });
-      }
+        const videoBlocks = mod.contentBlocks.filter(b => b.type === 'VIDEO');
+        const pdfBlocks = mod.contentBlocks.filter(b => b.type === 'PDF');
+        const problemBlocks = mod.contentBlocks.filter(b => b.type === 'PROBLEM');
 
-      for (const b of problemBlocks) {
-        if (b.problem) {
-          await supabase.from('coding_questions').upsert({
-            id: b.problem.id,
+        for (const v of videoBlocks) {
+          await supabase.from('videos').upsert({
+            id: v.id.replace('v-', ''),
             module_id: mod.id,
-            title: b.problem.title,
-            difficulty: b.problem.difficulty,
-            points: b.problem.points,
-            platform: b.problem.platform,
-            external_link: b.problem.externalLink,
-            description: b.problem.description
+            youtube_url: v.url,
+            title: v.title
           });
         }
+
+        for (const p of pdfBlocks) {
+          await supabase.from('pdfs').upsert({
+            id: p.id.replace('f-', ''),
+            module_id: mod.id,
+            pdf_url: p.url,
+            title: p.title
+          });
+        }
+
+        for (const b of problemBlocks) {
+          if (b.problem) {
+            await supabase.from('coding_questions').upsert({
+              id: b.problem.id,
+              module_id: mod.id,
+              title: b.problem.title,
+              difficulty: b.problem.difficulty,
+              points: b.problem.points,
+              platform: b.problem.platform,
+              external_link: b.problem.externalLink,
+              description: b.problem.description
+            });
+          }
+        }
       }
+    } catch (e) {
+      console.error("Error saving topic:", e);
     }
   },
 
   // --- DAILY CHALLENGES ---
   async fetchChallenges(): Promise<DailyChallengeSet[]> {
     try {
-      if (supabaseUrl.includes('placeholder')) return [];
       const { data, error } = await supabase
         .from('cn_challenges')
         .select(`*, cn_challenge_problems (cn_problems (*))`);
       
-      if (error) return [];
+      if (error) {
+        console.error("Error fetching challenges:", error);
+        return [];
+      }
       return data.map(c => ({
         id: c.id,
         date: c.date,
@@ -231,30 +240,32 @@ export const SupabaseService = {
   },
 
   async saveChallenge(challenge: DailyChallengeSet) {
-    if (supabaseUrl.includes('placeholder')) return;
-    await supabase.from('cn_challenges').upsert({ id: challenge.id, date: challenge.date });
-    
-    for (const prob of challenge.problems) {
-      await supabase.from('coding_questions').upsert({
-        id: prob.id,
-        title: prob.title,
-        difficulty: prob.difficulty,
-        points: prob.points,
-        platform: prob.platform,
-        external_link: prob.externalLink
-      });
-    }
+    try {
+      await supabase.from('cn_challenges').upsert({ id: challenge.id, date: challenge.date });
+      
+      for (const prob of challenge.problems) {
+        await supabase.from('coding_questions').upsert({
+          id: prob.id,
+          title: prob.title,
+          difficulty: prob.difficulty,
+          points: prob.points,
+          platform: prob.platform,
+          external_link: prob.externalLink
+        });
+      }
 
-    await supabase.from('cn_challenge_problems').delete().eq('challenge_id', challenge.id);
-    for (const prob of challenge.problems) {
-      await supabase.from('cn_challenge_problems').insert({ challenge_id: challenge.id, problem_id: prob.id });
+      await supabase.from('cn_challenge_problems').delete().eq('challenge_id', challenge.id);
+      for (const prob of challenge.problems) {
+        await supabase.from('cn_challenge_problems').insert({ challenge_id: challenge.id, problem_id: prob.id });
+      }
+    } catch (e) {
+      console.error("Error saving challenge:", e);
     }
   },
 
   // --- PROGRESS TRACKING ---
   async fetchUserProgress(userId: string): Promise<UserProgress | null> {
     try {
-      if (supabaseUrl.includes('placeholder')) return null;
       const [solvedData, progData, userData] = await Promise.all([
         supabase.from('cn_user_solved_problems').select('problem_id').eq('user_id', userId),
         supabase.from('user_progress').select('*').eq('user_id', userId),
@@ -285,29 +296,33 @@ export const SupabaseService = {
         completedDates: []
       };
     } catch (e) {
+      console.error("Error fetching user progress:", e);
       return null;
     }
   },
 
   async saveUserProgress(progress: UserProgress) {
-    if (supabaseUrl.includes('placeholder')) return;
-    for (const pid of progress.completedDailyProblemIds) {
-      await supabase.from('cn_user_solved_problems').upsert({ user_id: progress.userId, problem_id: pid });
-    }
+    try {
+      for (const pid of progress.completedDailyProblemIds) {
+        await supabase.from('cn_user_solved_problems').upsert({ user_id: progress.userId, problem_id: pid });
+      }
 
-    for (const mid of Object.keys(progress.unitProgress)) {
-      const p = progress.unitProgress[mid];
-      await supabase.from('user_progress').upsert({
-        user_id: progress.userId,
-        module_id: mid,
-        video_completed: p.completedBlockIds.some(id => id.startsWith('v-')),
-        pdf_completed: p.completedBlockIds.some(id => id.startsWith('f-')),
-        question_completed: p.moduleCompleted
-      });
-    }
+      for (const mid of Object.keys(progress.unitProgress)) {
+        const p = progress.unitProgress[mid];
+        await supabase.from('user_progress').upsert({
+          user_id: progress.userId,
+          module_id: mid,
+          video_completed: p.completedBlockIds.some(id => id.startsWith('v-')),
+          pdf_completed: p.completedBlockIds.some(id => id.startsWith('f-')),
+          question_completed: p.moduleCompleted
+        });
+      }
 
-    await supabase.from('cn_users')
-      .update({ points: progress.points, streak: progress.currentStreak })
-      .eq('id', progress.userId);
+      await supabase.from('cn_users')
+        .update({ points: progress.points, streak: progress.currentStreak })
+        .eq('id', progress.userId);
+    } catch (e) {
+      console.error("Error saving user progress:", e);
+    }
   }
 };
