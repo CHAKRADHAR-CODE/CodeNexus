@@ -1,9 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>CodeNexus | Premium Engineering Platform</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0B0F1A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CodeNexus">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
@@ -30,17 +39,27 @@
             background-color: var(--bg-app);
             color: var(--text-main);
             -webkit-font-smoothing: antialiased;
+            overscroll-behavior-y: none; /* Disable pull-to-refresh for native feel */
+            user-select: none; /* Premium app feel */
         }
+        
+        input, textarea { user-select: text; }
 
         .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-        /* Splash Screen */
-        @keyframes splashFade {
-            0% { opacity: 0; transform: scale(0.95); }
-            100% { opacity: 1; transform: scale(1); }
+        /* Cinematic Front Entry Animation */
+        @keyframes cinematicFront {
+            0% { 
+                opacity: 0; 
+                transform: scale(0.85) translateY(20px); 
+            }
+            100% { 
+                opacity: 1; 
+                transform: scale(1) translateY(0); 
+            }
         }
-        .splash-text {
-            animation: splashFade 0.8s cubic-bezier(0.2, 0, 0, 1) forwards;
+        .animate-premium-entry {
+            animation: cinematicFront 0.6s cubic-bezier(0.2, 0, 0, 1) forwards;
         }
 
         /* Smooth Content Fades */
@@ -52,23 +71,14 @@
             animation: contentIn 0.4s cubic-bezier(0, 0, 0.2, 1) forwards;
         }
 
-        /* Login Entrance Animations */
-        @keyframes slideInLeft {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
+        /* Native-like Route Transitions */
+        .page-transition-fade {
+            animation: fadeIn 0.12s ease-out forwards;
         }
-        @keyframes slideInRight {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .animate-slide-left { animation: slideInLeft 0.5s cubic-bezier(0, 0, 0.2, 1) forwards; }
-        .animate-slide-right { animation: slideInRight 0.5s cubic-bezier(0, 0, 0.2, 1) forwards; }
-        .animate-fade-up { animation: fadeUp 0.6s cubic-bezier(0, 0, 0.2, 1) forwards; }
 
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -80,9 +90,7 @@
         .dark ::-webkit-scrollbar-thumb { background: #27272a; }
 
         .premium-border { border: 1px solid var(--border); }
-        .premium-shadow { shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
-
-        iframe { border-radius: 12px; border: none; }
+        .glass { backdrop-filter: blur(12px); background-color: rgba(var(--bg-surface), 0.8); }
     </style>
     <script>
         tailwind.config = {
@@ -97,6 +105,25 @@
                         app: 'var(--bg-app)',
                         surface: 'var(--bg-surface)',
                         border: 'var(--border)',
+                    },
+                    keyframes: {
+                        'slide-left': {
+                            '0%': { transform: 'translateX(-20px)', opacity: '0' },
+                            '100%': { transform: 'translateX(0)', opacity: '1' }
+                        },
+                        'slide-right': {
+                            '0%': { transform: 'translateX(20px)', opacity: '0' },
+                            '100%': { transform: 'translateX(0)', opacity: '1' }
+                        },
+                        'fade-up': {
+                            '0%': { transform: 'translateY(10px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' }
+                        }
+                    },
+                    animation: {
+                        'slide-left': 'slide-left 0.6s cubic-bezier(0.2, 0, 0, 1) forwards',
+                        'slide-right': 'slide-right 0.6s cubic-bezier(0.2, 0, 0, 1) forwards',
+                        'fade-up': 'fade-up 0.6s cubic-bezier(0.2, 0, 0, 1) forwards'
                     }
                 }
             }

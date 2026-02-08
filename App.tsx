@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { User, UserRole, Topic, DailyChallengeSet, UserProgress } from './types';
 import { INITIAL_TOPICS, INITIAL_CHALLENGES } from './constants';
 import Login from './pages/Login';
@@ -9,9 +8,19 @@ import AdminDashboard from './pages/AdminDashboard';
 import TopicPage from './pages/TopicPage';
 import RankingPage from './pages/RankingPage';
 import { SupabaseService, supabase } from './services/supabase';
-import { Code2, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
+import UltraMinimalLoader from './components/UltraMinimalLoader';
 
 const DAILY_COMPLETION_BONUS_XP = 100;
+
+const RouteTransitions: React.FC<{children: React.ReactNode}> = ({children}) => {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="page-transition-fade h-full w-full">
+      {children}
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -60,9 +69,10 @@ const App: React.FC = () => {
       console.error("Cloud Error:", err);
     } finally {
       if (isInitial) {
+        // EXACT 1 SECOND PREMIUM TRANSITION
         setTimeout(() => {
           setIsLoading(false);
-          setTimeout(() => setShowSplash(false), 1000);
+          setTimeout(() => setShowSplash(false), 400); // Sharp, clean exit
         }, 800);
       }
     }
@@ -80,7 +90,6 @@ const App: React.FC = () => {
     const channel = supabase.channel('curriculum-realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
         console.debug('[Realtime] Syncing change from table:', payload.table);
-        // Instant refresh on any curriculum or user change
         initApp(); 
       })
       .subscribe();
@@ -172,17 +181,7 @@ const App: React.FC = () => {
   const handleLogin = (u: User) => { setUser(u); localStorage.setItem('cm_user', JSON.stringify(u)); };
 
   if (showSplash) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white dark:bg-black">
-        <div className="splash-text flex flex-col items-center">
-          <div className="w-16 h-16 bg-black dark:bg-white rounded-2xl flex items-center justify-center text-white dark:text-black mb-6">
-            <Code2 size={32} />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight">CodeNexus</h1>
-          <p className="text-zinc-400 text-sm mt-2">Welcome to CodeNexus</p>
-        </div>
-      </div>
-    );
+    return <UltraMinimalLoader />;
   }
 
   return (
@@ -198,28 +197,30 @@ const App: React.FC = () => {
         )}
       </div>
 
-      <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} users={users} />} />
-        <Route path="/" element={
-          user ? (
-            user.role === UserRole.ADMIN ? 
-            <AdminDashboard 
-              user={user} users={users} setUsers={setUsers}
-              topics={topics} setTopics={setTopics}
-              challenges={challenges} setChallenges={setChallenges}
-              onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} 
-            /> : 
-            <StudentDashboard 
-              user={user} users={users} topics={topics} challenges={challenges} progress={progress}
-              onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode}
-              onMarkAsSolved={handleMarkAsSolved} onMarkAsAttempted={() => {}}
-              currentDateStr={new Date().toISOString().split('T')[0]}
-            />
-          ) : <Navigate to="/login" />
-        } />
-        <Route path="/ranking" element={user ? <RankingPage user={user} users={users} onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} /> : <Navigate to="/login" />} />
-        <Route path="/topic/:id" element={user ? <TopicPage topics={topics} isDark={isDarkMode} onLogout={handleLogout} user={user} setDark={setIsDarkMode} progress={progress} onUpdateUnitProgress={handleUpdateUnitProgress} onMarkAsSolved={handleMarkAsSolved} /> : <Navigate to="/login" />} />
-      </Routes>
+      <RouteTransitions>
+        <Routes>
+          <Route path="/login" element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} users={users} />} />
+          <Route path="/" element={
+            user ? (
+              user.role === UserRole.ADMIN ? 
+              <AdminDashboard 
+                user={user} users={users} setUsers={setUsers}
+                topics={topics} setTopics={setTopics}
+                challenges={challenges} setChallenges={setChallenges}
+                onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} 
+              /> : 
+              <StudentDashboard 
+                user={user} users={users} topics={topics} challenges={challenges} progress={progress}
+                onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode}
+                onMarkAsSolved={handleMarkAsSolved} onMarkAsAttempted={() => {}}
+                currentDateStr={new Date().toISOString().split('T')[0]}
+              />
+            ) : <Navigate to="/login" />
+          } />
+          <Route path="/ranking" element={user ? <RankingPage user={user} users={users} onLogout={handleLogout} isDark={isDarkMode} setDark={setIsDarkMode} /> : <Navigate to="/login" />} />
+          <Route path="/topic/:id" element={user ? <TopicPage topics={topics} isDark={isDarkMode} onLogout={handleLogout} user={user} setDark={setIsDarkMode} progress={progress} onUpdateUnitProgress={handleUpdateUnitProgress} onMarkAsSolved={handleMarkAsSolved} /> : <Navigate to="/login" />} />
+        </Routes>
+      </RouteTransitions>
     </HashRouter>
   );
 };
