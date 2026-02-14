@@ -1,9 +1,9 @@
-const CACHE_NAME = 'codenexus-v1';
+
+const CACHE_NAME = 'codenexus-v2';
 const ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap'
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -13,8 +13,8 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Bypass Supabase and API calls to ensure realtime works
-  if (event.request.url.includes('supabase.co') || event.request.url.includes('googleapis.com')) {
+  // Bypass internal API calls and AI calls to ensure fresh data
+  if (event.request.url.includes('/api/') || event.request.url.includes('googleapis.com')) {
     return;
   }
 

@@ -1,7 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, UserRole, RankTier } from '../types';
 import Layout from '../components/Layout';
+import { BADGES, getBadgeIcon } from '../constants';
+import { ApiService } from '../services/api';
 import { 
   Trophy, 
   Flame, 
@@ -13,7 +15,9 @@ import {
   Globe,
   Sparkles,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Award,
+  Loader2
 } from 'lucide-react';
 
 interface RankingPageProps {
@@ -33,24 +37,33 @@ const getTier = (points: number = 0): { name: RankTier, color: string, bg: strin
   return { name: RankTier.BRONZE, color: 'text-orange-600', bg: 'bg-orange-500/10' };
 };
 
-const RankingPage: React.FC<RankingPageProps> = ({ user, users, onLogout, isDark, setDark }) => {
+const RankingPage: React.FC<RankingPageProps> = ({ user, onLogout, isDark, setDark }) => {
   const [search, setSearch] = useState('');
+  const [leaderboardData, setLeaderboardData] = useState<Partial<User>[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadLeaderboard = async () => {
+      const data = await ApiService.fetchLeaderboard();
+      setLeaderboardData(data);
+      setLoading(false);
+    };
+    loadLeaderboard();
+  }, []);
   
   const leaderboard = useMemo(() => {
-    return users
-      .filter(u => u.role === UserRole.STUDENT)
-      .sort((a, b) => (b.points || 0) - (a.points || 0))
-      .filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
-  }, [users, search]);
+    return leaderboardData
+      .filter(u => u.name?.toLowerCase().includes(search.toLowerCase()));
+  }, [leaderboardData, search]);
 
   const currentUserRank = leaderboard.findIndex(u => u.id === user.id) + 1;
 
   const getRankBadge = (rank: number) => {
     switch(rank) {
-      case 1: return <Crown size={18} className="text-amber-400" />;
-      case 2: return <Medal size={18} className="text-slate-300" />;
-      case 3: return <Medal size={18} className="text-orange-400" />;
-      default: return <span className="text-[10px] font-bold text-slate-400 w-5 text-center">{rank}</span>;
+      case 1: return <Crown size={22} className="text-amber-400 drop-shadow-md" />;
+      case 2: return <Medal size={20} className="text-slate-300" />;
+      case 3: return <Medal size={20} className="text-orange-400" />;
+      default: return <span className="text-[11px] font-black text-zinc-400 w-6 text-center">{rank}</span>;
     }
   };
 
@@ -60,34 +73,39 @@ const RankingPage: React.FC<RankingPageProps> = ({ user, users, onLogout, isDark
         
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
           <div className="space-y-4">
-            <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">Global Ranking</h1>
-            <p className="text-[14px] text-slate-500 dark:text-slate-400 max-w-lg font-medium">Monitoring {users.length} verified candidates across all synced platforms.</p>
+            <h1 className="text-4xl font-black text-zinc-900 dark:text-white tracking-tighter">Global Ranking</h1>
+            <p className="text-[14px] text-zinc-500 dark:text-zinc-400 max-w-lg font-bold">Vying for supremacy across {leaderboard.length} candidates.</p>
           </div>
           
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
             <input 
               type="text" 
-              placeholder="Filter by name..." 
+              placeholder="Search directory..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-64 bg-white dark:bg-zinc-900 border border-border pl-12 pr-4 py-3 rounded-[12px] text-sm focus:border-brand-accent outline-none transition-all shadow-sm"
+              className="w-64 bg-white dark:bg-zinc-900 border border-border pl-12 pr-4 py-3 rounded-[16px] text-sm focus:border-zinc-900 outline-none transition-all shadow-sm font-medium"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white dark:bg-zinc-900 border border-border rounded-[14px] overflow-hidden shadow-sm">
-              <div className="px-8 py-4 border-b border-border bg-slate-50/50 dark:bg-white/5 flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Candidate Registry</span>
-                <span className="text-[10px] font-bold text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Live Sync
+            <div className="bg-white dark:bg-zinc-900 border border-border rounded-[28px] overflow-hidden shadow-sm min-h-[400px]">
+              <div className="px-10 py-5 border-b border-border bg-zinc-50/50 dark:bg-white/5 flex items-center justify-between">
+                <span className="text-[11px] font-black text-zinc-400 uppercase tracking-widest">Candidate Registry</span>
+                <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/5 px-3 py-1 rounded-full flex items-center gap-1.5 border border-emerald-500/10">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> LIVE NODE
                 </span>
               </div>
               
               <div className="divide-y divide-border">
-                {leaderboard.map((u, idx) => {
+                {loading ? (
+                  <div className="py-20 flex flex-col items-center justify-center gap-4">
+                    <Loader2 className="animate-spin text-zinc-400" size={24} />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Syncing Standings...</p>
+                  </div>
+                ) : leaderboard.map((u, idx) => {
                   const rank = idx + 1;
                   const tier = getTier(u.points);
                   const isSelf = u.id === user.id;
@@ -95,38 +113,49 @@ const RankingPage: React.FC<RankingPageProps> = ({ user, users, onLogout, isDark
                   return (
                     <div 
                       key={u.id}
-                      className={`px-8 py-4 flex items-center gap-6 group transition-colors ${
-                        isSelf ? 'bg-brand-500/[0.03] dark:bg-white/5' : 'hover:bg-slate-50 dark:hover:bg-white/5'
+                      className={`px-10 py-5 flex items-center gap-8 group transition-colors ${
+                        isSelf ? 'bg-zinc-100/50 dark:bg-white/5' : 'hover:bg-zinc-50 dark:hover:bg-white/5'
                       }`}
                     >
                       <div className="w-8 flex justify-center shrink-0">
                         {getRankBadge(rank)}
                       </div>
                       
-                      <div className="flex-1 flex items-center gap-4">
-                        <div className="w-9 h-9 rounded-[8px] bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-400 font-bold text-[12px] border border-border">
-                          {u.name[0]}
+                      <div className="flex-1 flex items-center gap-5">
+                        <div className="w-11 h-11 rounded-[14px] bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 font-black text-[14px] border border-border group-hover:bg-zinc-900 group-hover:text-white transition-all">
+                          {u.name ? u.name[0] : '?'}
                         </div>
-                        <div>
-                          <div className="text-[13px] font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <div className="space-y-0.5">
+                          <div className="text-[14px] font-black text-zinc-900 dark:text-white flex items-center gap-2.5">
                             {u.name}
-                            {isSelf && <span className="text-[8px] font-black bg-brand-500 dark:bg-white text-white dark:text-black px-1.5 py-0.5 rounded uppercase">Self</span>}
+                            {isSelf && <span className="text-[9px] font-black bg-zinc-900 dark:bg-white text-white dark:text-black px-2 py-0.5 rounded-full uppercase">Self</span>}
                           </div>
-                          <div className={`text-[9px] font-bold uppercase tracking-widest ${tier.color}`}>
-                            {tier.name}
+                          <div className="flex items-center gap-2">
+                             <div className={`text-[10px] font-black uppercase tracking-widest ${tier.color}`}>
+                                {tier.name}
+                             </div>
+                             {rank <= 3 && (
+                               <div className="flex gap-1">
+                                  {BADGES.slice(0, 3).map(b => (
+                                    <div key={b.id} className={`${b.color} opacity-40 group-hover:opacity-100 transition-opacity`}>
+                                      {getBadgeIcon(b.iconName, 12)}
+                                    </div>
+                                  ))}
+                               </div>
+                             )}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-10 shrink-0">
-                        <div className="text-right w-20">
-                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Points</div>
-                          <div className="text-[13px] font-bold text-slate-900 dark:text-white">{u.points?.toLocaleString()}</div>
+                      <div className="flex items-center gap-12 shrink-0">
+                        <div className="text-right w-24">
+                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Efficiency</div>
+                          <div className="text-[15px] font-black text-zinc-900 dark:text-white">{u.points?.toLocaleString()} XP</div>
                         </div>
-                        <div className="text-right w-12">
-                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Streak</div>
-                          <div className="text-[13px] font-bold text-orange-500 flex items-center justify-end gap-1">
-                             {u.streak} <Flame size={12} fill="currentColor" />
+                        <div className="text-right w-16">
+                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-0.5">Streak</div>
+                          <div className="text-[15px] font-black text-orange-500 flex items-center justify-end gap-1.5">
+                             {u.streak} <Flame size={14} fill="currentColor" />
                           </div>
                         </div>
                       </div>
@@ -137,49 +166,57 @@ const RankingPage: React.FC<RankingPageProps> = ({ user, users, onLogout, isDark
             </div>
           </div>
 
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-slate-900 dark:bg-zinc-900 rounded-[14px] p-8 text-white relative overflow-hidden shadow-xl">
-               <div className="absolute inset-0 bg-gradient-to-br from-brand-accent/30 to-transparent opacity-40" />
-               <div className="relative z-10 space-y-6">
+          <div className="lg:col-span-4 space-y-8">
+            <div className="bg-zinc-900 dark:bg-zinc-800 rounded-[32px] p-10 text-white relative overflow-hidden shadow-2xl group">
+               <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+               <div className="relative z-10 space-y-8">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-[11px] font-bold uppercase tracking-widest opacity-60">My Performance</h3>
-                    <ShieldCheck size={20} className="text-brand-accent" />
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">Personal Node</h3>
+                    <ShieldCheck size={24} className="text-zinc-400" />
                   </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div>
-                      <div className="text-[12px] font-medium opacity-60">Global Position</div>
-                      <div className="text-3xl font-black tracking-tighter">#{currentUserRank}</div>
+                      <div className="text-[13px] font-bold text-zinc-400 mb-1">Current Standing</div>
+                      <div className="text-5xl font-black tracking-tighter">#{currentUserRank || '---'}</div>
                     </div>
                     
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-white rounded-full transition-all duration-1000"
-                        style={{ width: `${Math.min(100, (user.points! % 500) / 5)}%` }}
-                      />
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                         <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Tier Progress</span>
+                         <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300">{Math.min(100, (user.points! % 500) / 5)}%</span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-white rounded-full transition-all duration-1000 shadow-[0_0_12px_rgba(255,255,255,0.3)]"
+                          style={{ width: `${Math.min(100, (user.points! % 500) / 5)}%` }}
+                        />
+                      </div>
                     </div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider opacity-40">Top {Math.ceil((currentUserRank / leaderboard.length) * 100)}% of candidates</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                      {currentUserRank > 0 ? `Exceeding ${Math.max(0, 100 - Math.ceil((currentUserRank / Math.max(1, leaderboard.length)) * 100))}% of peer nodes` : 'Calculating percentile...'}
+                    </p>
                   </div>
                </div>
             </div>
 
-            <div className="bg-white dark:bg-zinc-900 border border-border rounded-[14px] p-6 shadow-sm">
-               <div className="flex items-center gap-2 mb-6">
-                 <Activity size={16} className="text-brand-accent" />
-                 <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">Active Logs</h3>
+            <div className="bg-white dark:bg-zinc-900 border border-border rounded-[32px] p-8 shadow-sm">
+               <div className="flex items-center gap-3 mb-8">
+                 <Activity size={18} className="text-zinc-900 dark:text-white" />
+                 <h3 className="text-[14px] font-black tracking-tight text-zinc-900 dark:text-white">Neural Feed</h3>
                </div>
                
-               <div className="space-y-5">
+               <div className="space-y-6">
                  {[1,2,3].map((i) => (
-                   <div key={i} className="flex gap-3">
-                     <div className="w-8 h-8 rounded-[8px] bg-slate-100 dark:bg-white/5 flex items-center justify-center shrink-0 text-amber-500">
-                       <Sparkles size={14} />
+                   <div key={i} className="flex gap-4 group/item">
+                     <div className="w-9 h-9 rounded-xl bg-zinc-50 dark:bg-white/5 flex items-center justify-center shrink-0 text-amber-500 border border-border group-hover/item:border-amber-500/30 transition-all">
+                       <Award size={16} />
                      </div>
-                     <div className="flex-1 space-y-0.5">
-                        <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200">Sarah solved Two Sum</p>
-                        <div className="flex items-center justify-between text-[9px] font-medium text-slate-400">
-                           <span className="flex items-center gap-1"><Globe size={10} /> LeetCode</span>
-                           <span>2m ago</span>
+                     <div className="flex-1 space-y-1">
+                        <p className="text-[12px] font-bold text-zinc-800 dark:text-zinc-200">Sarah unlocked 'Initiate'</p>
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                           <span className="flex items-center gap-1.5"><Globe size={11} /> Platform Sync</span>
+                           <span>{i * 4}m ago</span>
                         </div>
                      </div>
                    </div>

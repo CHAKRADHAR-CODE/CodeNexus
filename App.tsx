@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { User, UserRole, Topic, DailyChallengeSet, UserProgress } from './types';
-import { INITIAL_TOPICS, INITIAL_CHALLENGES } from './constants';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import TopicPage from './pages/TopicPage';
 import RankingPage from './pages/RankingPage';
-import { SupabaseService, supabase } from './services/supabase';
-import { Check } from 'lucide-react';
+import { ApiService } from './services/api';
+import { Check, Sparkles, CloudOff } from 'lucide-react';
 import UltraMinimalLoader from './components/UltraMinimalLoader';
 
 const DAILY_COMPLETION_BONUS_XP = 100;
@@ -26,6 +25,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showSplash, setShowSplash] = useState(true);
+  const [offlineMode, setOfflineMode] = useState(false);
 
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('cm_user');
@@ -43,99 +43,83 @@ const App: React.FC = () => {
     attemptedProblemIds: [],
     points: 0,
     currentStreak: 0,
-    completedDates: []
+    completedDates: [],
+    earnedBadgeIds: []
   });
 
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('cm_theme') === 'dark');
-  const [xpNotification, setXpNotification] = useState<{points: number, id: number} | null>(null);
+  const [xpNotification, setXpNotification] = useState<{points: number, id: number, label?: string} | null>(null);
 
   const initApp = useCallback(async (isInitial = false) => {
     try {
-      const [cloudUsers, cloudTopics, cloudChallenges] = await Promise.all([
-        SupabaseService.fetchUsers(),
-        SupabaseService.fetchTopics(),
-        SupabaseService.fetchChallenges()
-      ]);
+      // Attempt background fetch from hybrid API
+      // This will automatically use LocalStorage if Fetch fails
+      const cloudUsers = await ApiService.fetchUsers();
+      const cloudTracks = await ApiService.fetchTracks();
+      const cloudChallenges = await ApiService.fetchChallenges();
 
       setUsers(cloudUsers);
-      setTopics(cloudTopics.length > 0 ? cloudTopics : INITIAL_TOPICS);
-      setChallenges(cloudChallenges.length > 0 ? cloudChallenges : INITIAL_CHALLENGES);
+      setTopics(cloudTracks);
+      setChallenges(cloudChallenges);
 
       if (user && user.role === UserRole.STUDENT) {
-        const cloudProgress = await SupabaseService.fetchUserProgress(user.id);
-        if (cloudProgress) setProgress(cloudProgress);
+        const cloudProgress = await ApiService.fetchProgress(user.id);
+        const currentUserProfile = cloudUsers.find(u => u.id === user.id);
+        
+        if (cloudProgress) {
+          setProgress({
+            ...cloudProgress,
+            points: currentUserProfile?.points || 0,
+            currentStreak: currentUserProfile?.streak || 0
+          });
+        }
       }
+
+      // Check if we are successfully talking to a real server or mocking
+      // In a real production app, we could check a status endpoint
+      setOfflineMode(false);
     } catch (err) {
-      console.error("Cloud Error:", err);
+      console.debug("Hybrid Initialization Note:", err);
+      setOfflineMode(true);
     } finally {
       if (isInitial) {
-        // EXACT 1 SECOND PREMIUM TRANSITION
         setTimeout(() => {
           setIsLoading(false);
-          setTimeout(() => setShowSplash(false), 400); // Sharp, clean exit
+          setTimeout(() => setShowSplash(false), 400);
         }, 800);
       }
     }
   }, [user?.id, user?.role]);
 
-  // Initial Load
-  useEffect(() => {
-    initApp(true);
-  }, [initApp]);
+  useEffect(() => { initApp(true); }, [initApp]);
 
-  // --- REALTIME SYNC ENGINE ---
   useEffect(() => {
-    const tables = ['tracks', 'modules', 'videos', 'pdfs', 'coding_questions', 'cn_challenges', 'cn_users'];
-    
-    const channel = supabase.channel('curriculum-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        console.debug('[Realtime] Syncing change from table:', payload.table);
-        initApp(); 
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [initApp]);
+    if (user && user.role === UserRole.STUDENT && !isLoading) {
+      ApiService.saveProgress(progress).catch(() => {});
+    }
+  }, [progress, user, isLoading]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     localStorage.setItem('cm_theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  useEffect(() => {
-    if (user && user.role === UserRole.STUDENT && !isLoading) {
-      SupabaseService.saveUserProgress(progress);
-    }
-  }, [progress, user, isLoading]);
-
-  const showXpToast = (points: number) => {
-    setXpNotification({ points, id: Date.now() });
-    setTimeout(() => setXpNotification(null), 2500);
+  const showXpToast = (points: number, label?: string) => {
+    setXpNotification({ points, id: Date.now(), label });
+    setTimeout(() => setXpNotification(null), 3500);
   };
 
   const handleUpdateUnitProgress = (moduleId: string, blockId: string) => {
     setProgress(prev => {
-      const currentModProgress = prev.unitProgress[moduleId] || { moduleId, completedBlockIds: [], moduleCompleted: false, unlocked: true };
-      if (currentModProgress.completedBlockIds.includes(blockId)) return prev;
-
-      const newBlockIds = [...currentModProgress.completedBlockIds, blockId];
-      const mod = topics.flatMap(t => t.modules).find(m => m.id === moduleId);
-      const isNowComplete = mod ? mod.contentBlocks.filter(b => b.isVisible).every(b => newBlockIds.includes(b.id)) : false;
-
-      const newUnitProgress = {
-        ...prev.unitProgress,
-        [moduleId]: { ...currentModProgress, completedBlockIds: newBlockIds, moduleCompleted: isNowComplete }
-      };
-
-      const newCompletedModules = isNowComplete ? [...prev.completedModuleIds, moduleId] : prev.completedModuleIds;
+      const currentBlockIds = prev.unitProgress[moduleId]?.completedBlockIds || [];
+      if (currentBlockIds.includes(blockId)) return prev;
       showXpToast(25);
-
       return {
         ...prev,
-        unitProgress: newUnitProgress,
-        completedModuleIds: newCompletedModules,
+        unitProgress: {
+          ...prev.unitProgress,
+          [moduleId]: { moduleId, completedBlockIds: [...currentBlockIds, blockId], moduleCompleted: false, unlocked: true }
+        },
         points: prev.points + 25
       };
     });
@@ -145,25 +129,20 @@ const App: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     setProgress(prev => {
       if (prev.completedDailyProblemIds.includes(problemId)) return prev;
-      
+      showXpToast(points);
       let newPoints = prev.points + points;
       let newStreak = prev.currentStreak;
       let newCompletedDates = [...prev.completedDates];
 
-      showXpToast(points);
-
       const todaysChallengeSet = challenges.find(c => c.date === today);
       if (todaysChallengeSet) {
-        const alreadySolved = prev.completedDailyProblemIds.filter(id => 
-          todaysChallengeSet.problems.some(p => p.id === id)
-        );
-        const isLastOne = (alreadySolved.length + 1) === todaysChallengeSet.problems.length;
-
-        if (isLastOne && !prev.completedDates.includes(today)) {
+        const alreadySolvedIds = [...prev.completedDailyProblemIds, problemId];
+        const isComplete = todaysChallengeSet.problems.every(p => alreadySolvedIds.includes(p.id));
+        if (isComplete && !prev.completedDates.includes(today)) {
           newStreak += 1;
           newPoints += DAILY_COMPLETION_BONUS_XP;
           newCompletedDates.push(today);
-          showXpToast(DAILY_COMPLETION_BONUS_XP);
+          showXpToast(DAILY_COMPLETION_BONUS_XP, "Daily Goal Met!");
         }
       }
 
@@ -178,21 +157,32 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => { setUser(null); localStorage.removeItem('cm_user'); };
-  const handleLogin = (u: User) => { setUser(u); localStorage.setItem('cm_user', JSON.stringify(u)); };
+  const handleLogin = (u: User) => { 
+    setUser(u); 
+    localStorage.setItem('cm_user', JSON.stringify(u));
+    initApp();
+  };
 
-  if (showSplash) {
-    return <UltraMinimalLoader />;
-  }
+  if (showSplash) return <UltraMinimalLoader />;
 
   return (
     <HashRouter>
-      <div className="fixed top-20 right-6 z-[200] flex flex-col gap-2 pointer-events-none">
+      {/* Dynamic Notifications */}
+      <div className="fixed top-20 right-6 z-[200] flex flex-col gap-3 pointer-events-none">
+        {offlineMode && (
+          <div className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 py-2 rounded-xl flex items-center gap-3 text-[11px] font-bold animate-premium-entry shadow-2xl border border-white/10">
+            <CloudOff size={14} /> Local Session Active
+          </div>
+        )}
         {xpNotification && (
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade">
-            <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center">
-               <Check size={12} className="text-emerald-500" strokeWidth={3} />
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-premium-entry border-l-4 border-l-emerald-500">
+            <div className={`w-8 h-8 rounded-full ${xpNotification.label ? 'bg-amber-500' : 'bg-emerald-500'} flex items-center justify-center text-white`}>
+               {xpNotification.label ? <Sparkles size={16} /> : <Check size={16} strokeWidth={3} />}
             </div>
-            <span className="text-[13px] font-bold">+{xpNotification.points} XP Earned</span>
+            <div>
+              {xpNotification.label && <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-0.5">{xpNotification.label}</p>}
+              <span className="text-[14px] font-black">{xpNotification.points > 0 ? `+${xpNotification.points} XP Earned` : "Achievement Unlocked!"}</span>
+            </div>
           </div>
         )}
       </div>

@@ -42,14 +42,13 @@ export interface DailyProblem {
   topic?: string;
 }
 
-export type BlockType = 'VIDEO' | 'PDF' | 'PROBLEM';
+export type BlockType = 'VIDEO' | 'PDF';
 
 export interface ContentBlock {
   id: string;
   type: BlockType;
   title: string;
   url?: string;
-  problem?: DailyProblem;
   isVisible: boolean;
 }
 
@@ -58,6 +57,7 @@ export interface Module {
   title: string;
   description: string;
   contentBlocks: ContentBlock[];
+  problems: DailyProblem[]; 
   isVisible?: boolean;
 }
 
@@ -95,4 +95,13 @@ export interface UserProgress {
   currentStreak: number;
   lastChallengeDate?: string;
   completedDates: string[]; 
+  earnedBadgeIds: string[]; // Track earned achievements
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  iconName: string;
+  color: string;
 }

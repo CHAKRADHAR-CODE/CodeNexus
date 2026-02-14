@@ -1,88 +1,37 @@
 
 import React from 'react';
-import { Topic, UserRole, User, DailyChallengeSet, PlatformType } from './types';
+import { Topic, User, DailyChallengeSet, Badge } from './types';
 import { 
   Code2, 
   Database, 
   Binary, 
   Terminal, 
-  Globe 
+  Globe,
+  Award,
+  Zap,
+  Shield,
+  Trophy,
+  Sparkles,
+  Flame,
+  Target
 } from 'lucide-react';
 
-export const INITIAL_TOPICS: Topic[] = [
-  {
-    id: 'dsa-01',
-    title: 'Data Structures & Algorithms',
-    description: 'Master the core concepts of efficient computing.',
-    icon: 'Binary',
-    isVisible: true,
-    modules: [
-      {
-        id: 'mod-1',
-        title: 'Complexity Analysis (Big O)',
-        description: 'Understand time and space complexity in depth.',
-        isVisible: true,
-        contentBlocks: [
-          {
-            id: 'b1',
-            type: 'VIDEO',
-            title: 'Big O Explained',
-            url: 'https://www.youtube.com/embed/v4cd1O4zkGw',
-            isVisible: true
-          },
-          {
-            id: 'b2',
-            type: 'PDF',
-            title: 'Cheat Sheet',
-            url: 'https://www.adobe.com/support/products/enterprise/knowledgecenter/whitepapers/pdf/aem_6_0_architecture.pdf',
-            isVisible: true
-          },
-          {
-            id: 'b3',
-            type: 'PROBLEM',
-            title: 'Two Sum',
-            isVisible: true,
-            problem: { 
-              id: 'q1', 
-              title: 'Two Sum', 
-              difficulty: 'EASY', 
-              description: 'Find two indices such that their values add up to target.',
-              points: 10,
-              platform: PlatformType.LEETCODE,
-              externalLink: 'https://leetcode.com/problems/two-sum/'
-            }
-          }
-        ]
-      }
-    ],
-    interviewQuestions: ['Explain Time Complexity']
-  }
+export const BADGES: Badge[] = [
+  { id: 'first-solve', name: 'Initiate', description: 'Solved your first engineering challenge.', iconName: 'Zap', color: 'text-yellow-500' },
+  { id: 'streak-3', name: 'Consistent', description: 'Maintained a 3-day coding streak.', iconName: 'Flame', color: 'text-orange-500' },
+  { id: 'xp-1000', name: 'Power User', description: 'Earned over 1000 XP.', iconName: 'Trophy', color: 'text-blue-500' },
+  { id: 'track-complete', name: 'Architect', description: 'Finished an entire learning track.', iconName: 'Shield', color: 'text-emerald-500' },
+  { id: 'daily-master', name: 'Elite Solver', description: 'Completed 10 daily missions.', iconName: 'Target', color: 'text-rose-500' }
 ];
 
-const today = new Date().toISOString().split('T')[0];
-
-export const INITIAL_CHALLENGES: DailyChallengeSet[] = [
-  {
-    id: 'challenge-today',
-    date: today,
-    problems: [
-      {
-        id: 'dp1',
-        title: 'Contains Duplicate',
-        description: 'Check if array contains any duplicates.',
-        difficulty: 'EASY',
-        points: 10,
-        platform: PlatformType.LEETCODE,
-        externalLink: 'https://leetcode.com/problems/contains-duplicate/'
-      }
-    ]
-  }
-];
-
-export const MOCK_USERS: User[] = [
-  { id: '1', email: 'admin@gmail.com', role: UserRole.ADMIN, name: 'System Admin', password: '111111' },
-  { id: '2', email: 'user@gmail.com', role: UserRole.STUDENT, name: 'Alex Learner', leetcodeUsername: 'user123', points: 2450, streak: 8, password: '111111' }
-];
+/**
+ * DATABASE SOURCE OF TRUTH
+ * All initial mock data has been removed. 
+ * The app will now fetch all content from Supabase.
+ */
+export const INITIAL_TOPICS: Topic[] = [];
+export const INITIAL_CHALLENGES: DailyChallengeSet[] = [];
+export const MOCK_USERS: User[] = [];
 
 export const getTopicIcon = (name: string) => {
   switch (name) {
@@ -91,5 +40,17 @@ export const getTopicIcon = (name: string) => {
     case 'Binary': return <Binary size={20} />;
     case 'Globe': return <Globe size={20} />;
     default: return <Terminal size={20} />;
+  }
+};
+
+export const getBadgeIcon = (name: string, size = 16) => {
+  switch (name) {
+    case 'Zap': return <Zap size={size} />;
+    case 'Flame': return <Flame size={size} />;
+    case 'Trophy': return <Trophy size={size} />;
+    case 'Shield': return <Shield size={size} />;
+    case 'Target': return <Target size={size} />;
+    case 'Sparkles': return <Sparkles size={size} />;
+    default: return <Award size={size} />;
   }
 };
