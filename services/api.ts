@@ -10,7 +10,7 @@ import { User, Topic, DailyChallengeSet, UserProgress, UserRole } from '../types
 
 // REPLACE THIS LINK with your Render URL once you get it!
 // Example: 'https://codenexus-backend.onrender.com/api'
-const PRODUCTION_API_URL = 'https://codenexus-plw9.onrender.com';
+const PRODUCTION_API_URL = 'https://codenexus-r8gn.onrender.com';
 const LOCAL_API_URL = 'http://localhost:5000/api';
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
