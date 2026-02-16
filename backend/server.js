@@ -21,6 +21,7 @@ app.get('/', (req, res) => {
     status: 'active',
     service: 'CodeNexus API',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    dbName: mongoose.connection.name,
     timestamp: new Date().toISOString()
   });
 });
@@ -90,42 +91,60 @@ const Progress = mongoose.model('Progress', ProgressSchema);
 
 // --- AUTO-SEED FUNCTION ---
 async function seedIfEmpty() {
-  const count = await User.countDocuments();
-  if (count === 0) {
-    console.log('🌱 DATABASE: Empty detected. Seeding default accounts...');
-    await User.create([
-      { 
-        email: 'admin@test.com', 
-        password: '111111', 
-        name: 'Master Admin', 
-        role: 'ADMIN' 
-      },
-      { 
-        email: 'student@test.com', 
-        password: '222222', 
-        name: 'Chakradhar', 
-        role: 'STUDENT', 
-        points: 1200, 
-        streak: 4 
-      }
-    ]);
-    console.log('✅ DATABASE: Admin (111111) and Student (222222) created.');
+  try {
+    const count = await User.countDocuments();
+    if (count === 0) {
+      console.log('🌱 DATABASE: Empty detected. Seeding default accounts...');
+      await User.create([
+        { 
+          email: 'admin@test.com', 
+          password: '111111', 
+          name: 'Master Admin', 
+          role: 'ADMIN' 
+        },
+        { 
+          email: 'student@test.com', 
+          password: '222222', 
+          name: 'Chakradhar', 
+          role: 'STUDENT', 
+          points: 1200, 
+          streak: 4 
+        }
+      ]);
+      console.log('✅ DATABASE: Admin (111111) and Student (222222) created.');
+    } else {
+      console.log(`📊 DATABASE: Found ${count} existing users.`);
+    }
+  } catch (err) {
+    console.error('❌ SEED ERROR:', err.message);
   }
 }
 
 console.log('📡 Attempting Database Handshake...');
 
+// Force usage of the 'CodeNexus' database if not in the URI
 mongoose.connect(MONGO_URI, { 
   serverSelectionTimeoutMS: 10000,
-  family: 4 
+  family: 4,
+  dbName: 'CodeNexus' // This forces mongoose to use CodeNexus even if URI is missing it
 })
   .then(() => {
-    console.log('✅ DATABASE: Connection Secure');
+    const dbName = mongoose.connection.name;
+    console.log(`✅ DATABASE: Connection Securely Linked to [${dbName}]`);
+    
+    if (dbName === 'test') {
+      console.warn('⚠️  WARNING: You are connected to the "test" database.');
+      console.warn('To fix this, update your URI to include /CodeNexus before the ?');
+    }
+    
     seedIfEmpty();
   })
   .catch(err => {
     console.error('❌ DATABASE: Connection Failed');
     console.error('Error Details:', err.message);
+    if (err.message.includes('querySrv ENOTFOUND')) {
+      console.log('💡 TIP: Check your Internet connection or MongoDB Atlas cluster status.');
+    }
   });
 
 // --- ROUTES ---
@@ -192,7 +211,6 @@ app.post('/api/progress', async (req, res) => {
   res.json(p);
 });
 
-// Manual Seed Route (Optional backup)
 app.get('/api/seed', async (req, res) => {
   try {
     await seedIfEmpty();
